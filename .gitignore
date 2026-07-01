@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.Python
+
+# 環境変数・シークレット
+.env
+.env.*
+!.env.example
+
+# SQLite（データ本体はコミットしない）
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/data/
+
+# テスト・カバレッジ
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Fly.io
+fly.toml.bak
+
+# OS / エディタ
+.DS_Store
+*.swp
+.idea/
+.vscode/

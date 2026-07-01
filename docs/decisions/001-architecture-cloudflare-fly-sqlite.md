@@ -111,7 +111,7 @@ async def cache_headers(request, call_next):
 
 ## 5. キャッシュパージ
 
-Admin から更新した際、Cloudflare API で該当 URL のみパージする。
+Admin から更新した際、Cloudflare API で **該当 URL（個別ページ）とタグ（一覧など広範）を併用**してパージする。
 
 > ✅ **Cloudflare Free でも各種パージが使える**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag（`tags`）/ Prefix（`prefixes`）/ Purge Everything すべて Free プランで利用可能**。※旧記述の「タグ/prefixはEnterprise限定」は**誤りのため訂正**。
 > ⚠️ ただし Free の **Tag/Prefix/Hostname/全パージのレート制限は 5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高い。運用方針は次の通り（[`project-plan.md`](../project-plan.md) §5・D12）:
@@ -125,27 +125,42 @@ import httpx, os
 CF_ZONE = os.environ["CF_ZONE_ID"]
 CF_TOKEN = os.environ["CF_API_TOKEN"]
 
-async def purge(urls: list[str]):
+async def _purge(payload: dict):
     async with httpx.AsyncClient() as c:
         await c.post(
             f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE}/purge_cache",
             headers={"Authorization": f"Bearer {CF_TOKEN}"},
-            json={"files": urls},
+            json=payload,
             timeout=10.0,
         )
+
+async def purge_urls(urls: list[str]):        # 個別ページ（高上限）: 1リクエスト最大100URL
+    await _purge({"files": urls})
+
+async def purge_tags(tags: list[str]):        # 広範な無効化: Freeは5req/分・最大100タグ/req
+    await _purge({"tags": tags})
+
+async def purge_prefixes(prefixes: list[str]):  # パス配下一括: Freeは5req/分
+    await _purge({"prefixes": prefixes})
 ```
+
+各レスポンスに `Cache-Tag` ヘッダーを付与しておくと、タグパージでまとめて無効化できる（例: 個別名言に `quote-{id}`、一覧系ページに `quotes-list` / `author-{id}` / `category-{slug}`）。
 
 ### パージ対象の設計
 
-| 更新操作 | パージすべきURL |
-|---|---|
-| 名言 追加/編集/削除 | `/quotes/{id}`, `/quotes`, `/authors/{slug}`, `/categories/{slug}`, `/`, `/ranking` |
-| 著者 追加/編集 | `/authors/{slug}`, `/authors` |
-| カテゴリ 編集 | `/categories/{slug}`, `/categories` |
-| 出典/登場人物 編集 | `/sources/*`, `/characters/*` |
+**個別ページは URL パージ（即時・高上限）／一覧など広範な無効化は Tag パージ**で使い分ける。
 
-- 一括操作時はまとめて1リクエストにする（Cloudflareは最大30URL/リクエスト）
-- 完全にリセットしたい場合は `purge_everything: true`（多用しない）
+| 更新操作 | URLパージ（`files`） | タグパージ（`tags`） |
+|---|---|---|
+| 名言 追加/編集/削除 | `/quotes/{id}`, 該当OG `/api/og?...` | `quotes-list`, `author-{id}`, `category-{slug}`, `ranking`, `home` |
+| 著者 追加/編集 | `/authors/{slug}` | `authors-list`, `author-{id}` |
+| カテゴリ 編集 | `/categories/{slug}` | `categories-list`, `category-{slug}` |
+| 出典/登場人物 編集 | `/sources/{slug}`, `/characters/{slug}` | `sources-list`, `characters-list` |
+
+- **URLパージの上限（Free）**: **800 URLs/秒・1リクエスト最大100URL**（旧記述「最大30URL/リクエスト」は誤りのため訂正）。100超は分割送信する。
+- **Tag/Prefixパージの上限（Free）**: **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。一括登録など短時間の大量更新はバッチ集約する。
+- 広範に落としたい範囲がレート制限に収まらない場合は、短めの `s-maxage` で自然失効に委ねる（§3 のTTL設計）。
+- 完全にリセットしたい場合は `purge_everything: true`（多用しない）。
 
 ## 6. SQLite 構成
 

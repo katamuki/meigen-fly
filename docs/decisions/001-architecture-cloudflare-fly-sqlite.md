@@ -16,7 +16,7 @@
 ```
 
 - **フロント**: FastAPI + Jinja2 テンプレートで HTML を返す SSR 構成
-- **DB**: SQLite。書き込みは Admin のみ、読み取り中心
+- **DB**: SQLite。書き込みは**原則 Admin のみ**（例外は匿名いいねの専用書き込み経路）、読み取り中心
 - **CDN**: Cloudflare（無料プランで十分）
 - **ホスティング**: Fly.io（東京リージョン `nrt` 推奨）
 
@@ -113,7 +113,11 @@ async def cache_headers(request, call_next):
 
 Admin から更新した際、Cloudflare API で該当 URL のみパージする。
 
-> ⚠️ **Cloudflare Free プランの制約**: パージは **URL単位（`files`）** と **全パージ（`purge_everything`）のみ**。**タグパージ（`tags`）・プレフィックスパージ（`prefixes`）・ホスト単位パージは Enterprise 限定**で Free では使えない。したがって「1回の更新で影響する全URL」を**アプリ側で列挙**する必要がある。一覧の全ページングURLまで律儀に列挙するのは非現実的なため、**個別詳細ページ・OG画像はURL列挙で即時パージ／一覧・ランキング・新着は短めの `s-maxage` で自然失効に委ねる**、という境界を設ける（[`project-plan.md`](../project-plan.md) §5・D12）。
+> ✅ **Cloudflare Free でも各種パージが使える**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag（`tags`）/ Prefix（`prefixes`）/ Purge Everything すべて Free プランで利用可能**。※旧記述の「タグ/prefixはEnterprise限定」は**誤りのため訂正**。
+> ⚠️ ただし Free の **Tag/Prefix/Hostname/全パージのレート制限は 5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高い。運用方針は次の通り（[`project-plan.md`](../project-plan.md) §5・D12）:
+> - **個別詳細ページ・OG画像 → URLパージ**で即時反映（高上限）。
+> - **一覧・著者/カテゴリ・ランキング等の広範な無効化 → `Cache-Tag` を付与してタグパージ**でまとめて落とす（5req/分に収まるようバッチ集約）。
+> - 制約に収まらない範囲は**短めの `s-maxage` で自然失効に委ねる**。
 
 ```python
 import httpx, os
@@ -167,13 +171,24 @@ PRAGMA busy_timeout = 5000;
 
 ### 6.3 全文検索
 
+**方式B（FTS5 + アプリ側bigram）で確定**（決定記録002）。`trigram` は2文字語がヒットしないため**不採用**。`unicode61` の FTS5 テーブルへ、アプリ側で2文字ずつ分割（bigram）した検索用テキストを格納する。
+
 ```sql
+-- 検索用の派生テキスト（bigram化済み）を格納する列を FTS5 で索引化
 CREATE VIRTUAL TABLE quotes_fts USING fts5(
-    text, author, tokenize='trigram'
+    text_bigram,        -- 例: "人生は" → "人生 生は"（アプリ側で生成して INSERT）
+    author_bigram,
+    tokenize='unicode61'
 );
 ```
 
-日本語のため `trigram` トークナイザ推奨（`icu` があればより良い）。
+```python
+def bigrams(s: str) -> str:
+    s = s.replace(" ", "")
+    return " ".join(s[i:i+2] for i in range(len(s) - 1)) if len(s) >= 2 else s
+```
+
+検索時もクエリを `bigrams()` で分割して `MATCH` する。ランキングは FTS5 の `bm25()` ＋補助ソートで現状の重み付けを再現する（決定記録002）。1文字検索のみ `LIKE '%x%'` で補助。
 
 ## 7. Fly.io 構成
 

@@ -41,7 +41,7 @@
 | 開発言語 | Python（3.12系想定） |
 | ドメイン | 既存ドメインを最終的に切替（段階リリース） |
 
-> ⚠️ 上記より下流（LiteFS or Litestream、検索方式 B or D、認証方式 等）は **未決**。第7章「検討事項」で扱う。
+> ⚠️ 上記より下流（LiteFS or Litestream、管理者認証方式、パージ運用 等）は **未決**。第7章「検討事項」で扱う。検索方式は**方式B（FTS5+bigram）で確定済み**（D1）。
 
 ## 3. スコープ（何を作り変えるか）
 
@@ -120,10 +120,11 @@ quotes / authors / categories / characters / sources / source_types / profession
 ```
 
 - **キャッシュ**: パスごとに `Cache-Control` をMiddlewareで一元管理。`/search` と `/admin/*` は `private, no-store`。公開ページは `s-maxage` を長め・`max-age` を短めに。
-- **パージ**: Admin更新時に Cloudflare API で該当URLのみパージ。
-  - ⚠️ **Cloudflare Free の制約**: パージは**URL単位（単一ファイル）** と **全パージ（purge_everything）のみ**。**タグパージ／プレフィックスパージは Enterprise 限定で使えない**。したがって「1更新で影響する全URL」を**アプリ側で列挙**する必要がある（決定記録001 §5 のパージ対象表を実URLに展開）。
-  - **列挙が必要な派生URL**: 一覧の**全ページングURL**（`/quotes/page/N`, 著者/カテゴリ/出典の各ページ）、`/quotes/latest*`、`/ranking`、`/`、該当**OG画像** `/api/og?...`、`/sitemap.xml`。
-  - **割り切り方針（D12）**: 全ページ列挙は非現実的なため、**個別詳細ページ・OGはURL列挙で即時パージ**、**一覧/ランキング/新着は短めTTL（`s-maxage`）で自然失効に委ねる**方針を基本とする。列挙対象とTTL委任対象の境界を実装前に確定する。
+- **パージ**: Admin更新時に Cloudflare API で該当URL/タグ/プレフィックスをパージ。
+  - ✅ **Cloudflare Free でも利用可能な方式**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag / Prefix / Purge Everything すべて Free で使える**（旧記述「タグ/prefixはEnterprise限定」は誤りのため訂正）。
+  - ⚠️ **Free のレート制限**: Tag/Prefix/Hostname/Purge Everything は **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージはこれと別枠で上限が高い（数百〜数千URL/秒）。→ **一括登録など短時間の大量更新でタグ/prefixを多用すると 5/分 に当たる**点が実運用上の論点。
+  - **列挙が必要な派生URL（URLパージ採用時）**: 一覧の**全ページングURL**（`/quotes/page/N`, 著者/カテゴリ/出典の各ページ）、`/quotes/latest*`、`/ranking`、`/`、該当**OG画像** `/api/og?...`、`/sitemap.xml`。
+  - **方針（D12）**: **個別詳細ページ・OGは高上限のURLパージで即時反映**。一覧/著者/カテゴリ/ランキング等の広範な無効化は、`Cache-Tag` を付与して**タグパージ**（例 `quotes-list`, `author-123`）でまとめて落とす選択肢が Free でも取れる。ただし **5リクエスト/分**の制約に収まるようバッチ集約する。制約に収まらない範囲は**短めTTL（`s-maxage`）で自然失効に委任**。URLパージ／タグパージ／TTL委任の**使い分け境界**を実装前に確定する。
   - **いいね数**: ページ本体はキャッシュしたまま、カウントのみ非キャッシュのHTML断片/軽量エンドポイントで取得し差し替える（パージ対象にしない）。
 - **ETag/304**: 個別名言・著者は `updated_at` からETag生成。
 - **セキュリティヘッダ**: CSP / nosniff / Referrer-Policy 等（決定記録001 §11）。
@@ -170,7 +171,7 @@ meigen-fly/
 | D9 | **いいね（公開書き込み）の設計・多重対策** | 専用エンドポイント＋ip_hash+client_uuid（＋任意でTurnstile） | **公開ユーザー書き込みの唯一の経路**。レート制限・Origin/CSRF対策・重複抑制・カウント差し替え方針をまとめて設計（§3.2-2） |
 | D10 | **URL互換性** | 現行URLを完全維持するか | SEO維持のため**維持推奨**。差分は301で吸収（決定記録: URL構造） |
 | D11 | **多言語/表示言語** | `display_language_preference` の扱い | 現行仕様を踏襲 |
-| D12 | **キャッシュパージの境界** | URL列挙で即時パージ / 短TTLで自然失効 | Cloudflare Freeはタグ/prefixパージ不可。詳細＝即時列挙、一覧/ランキング＝短TTL委任の境界を確定（§5） |
+| D12 | **キャッシュパージの使い分け** | URLパージ / タグ・prefixパージ / 短TTL委任 | **Freeでも URL/Tag/Prefix/全パージ可**。ただしTag/Prefixは**5req/分・100ops/req**。詳細＝URL即時、広範＝タグ（バッチ集約）、収まらない分＝短TTLの境界を確定（§5） |
 
 > これらは各々を `docs/decisions/003-...` 以降のADRとして起票し、決定次第この表を更新する。
 

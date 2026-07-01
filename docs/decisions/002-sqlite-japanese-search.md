@@ -2,14 +2,17 @@
 
 ## ステータス
 
-検討中（2026-06-30 調査）
+**確定: 方式B（FTS5 + アプリ側bigram）を採用**（2026-07-01決定。初期調査 2026-06-30）
+
+> **2026-07-01 更新（重要）**: 本ADRは当初 **AWS Lightsail** 前提で調査したが、プロジェクトのホスティングは **Fly.io（東京 `nrt`）に確定**した（[`project-plan.md`](../project-plan.md) §2 / [`001-architecture-cloudflare-fly-sqlite.md`](001-architecture-cloudflare-fly-sqlite.md)）。以下の本文中の「Lightsail」は **Fly.io の永続VPS/ボリューム構成に読み替える**こと。永続VM＋ボリューム前提という判断の骨子（SQLite書き込み・FTS5・移行スクリプトが素直に動く）は Fly.io でもそのまま成立する。
+> また、当初「本命/簡易案」として両論併記していた検索方式は、**方式B（FTS5 + アプリ側bigram）を初期から採用**することで確定した（方式D=LIKE全文は不採用）。
 
 ## コンテキスト
 
 現在の名言集.comは **Vercel + Supabase(PostgreSQL)** 構成で稼働している。
-これを **AWS Lightsail + FastAPI + HTMX + SQLite** 構成へ作り変えることを検討している。
+これを **Fly.io + FastAPI + HTMX + SQLite** 構成へ作り変える（当初検討時は AWS Lightsail 前提。上記更新参照）。
 
-- **移管の主目的**: Lightsail上で **コストを抑えて運用** すること（DBサーバープロセス不要・ファイル1個で完結するSQLiteを採用したい）。
+- **移管の主目的**: 永続VPS（Fly.io）上で **コストを抑えて運用** すること（DBサーバープロセス不要・ファイル1個で完結するSQLiteを採用したい）。
 - **論点**: 現在の検索は PostgreSQL拡張 **PGroonga** による高精度な日本語全文検索に依存している。SQLiteへ移管した場合に **日本語検索（特に2文字語）をどう実現するか** を決める必要がある。
 
 ### 現状（移管元）の検索実装

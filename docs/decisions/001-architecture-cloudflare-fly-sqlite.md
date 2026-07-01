@@ -52,23 +52,37 @@
 
 パスごとの Cache-Control を Middleware または依存関数で一元管理する。個別ルートに直書きしない。
 
+> ⚠️ **注意（prefixマッチのバグ）**: `startswith` による prefix マッチでは、`"/"` は**あらゆるパスにマッチ**する。dict の挿入順で先頭一致 break すると、`"/"` が先頭にある限り**全パスがトップページのルールに落ちる**。実装では次のいずれかで回避すること。
+> - **最長prefix優先**: キーを長さ降順にソートしてから評価し、`"/"` はフォールバック（完全一致 or 最後）として扱う。
+> - **完全一致 + prefix の使い分け**: `"/"` は**完全一致のみ**、それ以外は prefix、と規則を分ける。
+> - **正規表現ルール**でパスを判定する。
+
 ```python
+# キーは「長い（具体的な）prefix ほど先」に評価する。"/" はフォールバック。
 CACHE_RULES = {
-    "/": "public, s-maxage=300, max-age=60",
     "/quotes": "public, s-maxage=600, max-age=60",
-    # ...
+    # ... 他の具体的パスを列挙 ...
 }
+ROOT_RULE = "public, s-maxage=300, max-age=60"  # "/" 完全一致用
+
+# 長さ降順で評価して最長prefix優先にする
+_SORTED_RULES = sorted(CACHE_RULES.items(), key=lambda kv: len(kv[0]), reverse=True)
 
 @app.middleware("http")
 async def cache_headers(request, call_next):
     response = await call_next(request)
+    path = request.url.path
     # /admin, /search は必ず no-store
-    if request.url.path.startswith(("/admin", "/search")):
+    if path.startswith(("/admin", "/search")):
         response.headers["Cache-Control"] = "private, no-store"
         return response
-    # ルールマッチ
-    for prefix, value in CACHE_RULES.items():
-        if request.url.path.startswith(prefix):
+    # トップは完全一致で判定（prefix マッチの巻き込みを防ぐ）
+    if path == "/":
+        response.headers.setdefault("Cache-Control", ROOT_RULE)
+        return response
+    # 最長prefix優先
+    for prefix, value in _SORTED_RULES:
+        if path.startswith(prefix):
             response.headers.setdefault("Cache-Control", value)
             break
     return response
@@ -98,6 +112,8 @@ async def cache_headers(request, call_next):
 ## 5. キャッシュパージ
 
 Admin から更新した際、Cloudflare API で該当 URL のみパージする。
+
+> ⚠️ **Cloudflare Free プランの制約**: パージは **URL単位（`files`）** と **全パージ（`purge_everything`）のみ**。**タグパージ（`tags`）・プレフィックスパージ（`prefixes`）・ホスト単位パージは Enterprise 限定**で Free では使えない。したがって「1回の更新で影響する全URL」を**アプリ側で列挙**する必要がある。一覧の全ページングURLまで律儀に列挙するのは非現実的なため、**個別詳細ページ・OG画像はURL列挙で即時パージ／一覧・ランキング・新着は短めの `s-maxage` で自然失効に委ねる**、という境界を設ける（[`project-plan.md`](../project-plan.md) §5・D12）。
 
 ```python
 import httpx, os

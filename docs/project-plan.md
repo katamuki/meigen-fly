@@ -66,8 +66,9 @@
 
 ### 3.2 移植する主要機能
 
-1. **日本語全文検索**（名言・著者）— PGroonga相当を SQLite で再現（第7章・決定記録002）
+1. **日本語全文検索**（名言・著者）— PGroonga相当を SQLite **FTS5 + アプリ側bigram（方式B・確定）** で再現（第7章・決定記録002）
 2. **匿名いいね**（`quote_likes`：client_uuid + ip_hash、重複抑制）
+   - ⚠️ **本サイト唯一の「公開ユーザー書き込み」**。§4・§9の「書き込みはAdminのみ」の**明示的な例外**。専用の書き込みエンドポイントを設け、レート制限・Origin/CSRF対策・多重投票抑制を必須とする（D9）。キャッシュ済みページ上のいいね数は**HTMXで別途取得して差し替える**（ページ本体はキャッシュ、カウントは非キャッシュ経路）
 3. **ランキング**（名言/著者/カテゴリ、いいね数・weight による定期再計算）
 4. **OG画像生成**（`/api/og`：名言・著者向け動的画像）
 5. **SEO**（sitemap.xml / robots.txt / 構造化データ / メタタグ / canonical）
@@ -97,8 +98,8 @@ quotes / authors / categories / characters / sources / source_types / profession
 | `TIMESTAMPTZ` | `TEXT`(ISO8601, UTC) または `INTEGER`(epoch) |
 | `JSONB` | アプリ層でJOIN構築（RPCのJSONB返却は廃止しPython側で組む） |
 | `EXCLUDE`制約（生誕国排他） | アプリ層 or 部分UNIQUEインデックスで代替 |
-| RLS / `is_admin()` | 公開DBは読み取り専用運用、書き込みはAdmin経路のみ（アプリ層で担保） |
-| PGroongaインデックス | FTS5仮想テーブル（第7章） |
+| RLS / `is_admin()` | 書き込みは原則Admin経路のみ（アプリ層で担保）。**例外は匿名いいねの専用書き込み経路のみ**（§3.2-2 / D9） |
+| PGroongaインデックス | FTS5仮想テーブル + アプリ側bigram（方式B・第7章） |
 | マテビュー（ランキング） | 通常テーブル + 定期再計算バッチ |
 | RPC（`get_quote_rankings` 等） | FastAPIサービス層のSQL関数に移植 |
 
@@ -109,7 +110,7 @@ quotes / authors / categories / characters / sources / source_types / profession
 
 ### 移行スクリプト
 - Supabase(PostgreSQL) から `pg_dump` / CSVエクスポート → 変換 → SQLite投入するビルドスクリプトを用意。
-- 投入時に**検索用bigram列/FTS5テーブルを派生生成**（決定記録002・選択肢B採用時）。
+- 投入時に**検索用bigram列/FTS5テーブルを派生生成**（方式B確定・決定記録002）。
 - 元テキスト（`text` / `text_en` / `context_note`）は原本保持。
 
 ## 5. アーキテクチャ（決定記録001の要約）
@@ -120,9 +121,14 @@ quotes / authors / categories / characters / sources / source_types / profession
 
 - **キャッシュ**: パスごとに `Cache-Control` をMiddlewareで一元管理。`/search` と `/admin/*` は `private, no-store`。公開ページは `s-maxage` を長め・`max-age` を短めに。
 - **パージ**: Admin更新時に Cloudflare API で該当URLのみパージ。
+  - ⚠️ **Cloudflare Free の制約**: パージは**URL単位（単一ファイル）** と **全パージ（purge_everything）のみ**。**タグパージ／プレフィックスパージは Enterprise 限定で使えない**。したがって「1更新で影響する全URL」を**アプリ側で列挙**する必要がある（決定記録001 §5 のパージ対象表を実URLに展開）。
+  - **列挙が必要な派生URL**: 一覧の**全ページングURL**（`/quotes/page/N`, 著者/カテゴリ/出典の各ページ）、`/quotes/latest*`、`/ranking`、`/`、該当**OG画像** `/api/og?...`、`/sitemap.xml`。
+  - **割り切り方針（D12）**: 全ページ列挙は非現実的なため、**個別詳細ページ・OGはURL列挙で即時パージ**、**一覧/ランキング/新着は短めTTL（`s-maxage`）で自然失効に委ねる**方針を基本とする。列挙対象とTTL委任対象の境界を実装前に確定する。
+  - **いいね数**: ページ本体はキャッシュしたまま、カウントのみ非キャッシュのHTML断片/軽量エンドポイントで取得し差し替える（パージ対象にしない）。
 - **ETag/304**: 個別名言・著者は `updated_at` からETag生成。
 - **セキュリティヘッダ**: CSP / nosniff / Referrer-Policy 等（決定記録001 §11）。
 - 詳細な Cache-Control 表・パージ対象表・fly.toml・Dockerfile要点は決定記録001を参照。
+  - ⚠️ 決定記録001 §4.1 の `CACHE_RULES` サンプルは、先頭キー `/` が `startswith` で**全パスにマッチ**してしまう。実装時は**最長prefix優先**（キーを長さ降順で評価）または正規表現ルールに直すこと（決定記録001 側に注記済み）。
 
 ## 6. アプリ構成案（FastAPI + HTMX）
 
@@ -153,7 +159,7 @@ meigen-fly/
 
 | # | 論点 | 選択肢 | 推奨/メモ |
 |---|---|---|---|
-| D1 | **検索方式** | B: FTS5+アプリ側bigram / D: `LIKE '%語%'` 全文 | 小規模ゆえ**Dで開始→将来B**が現実的。ただし将来を見据え最初からBも可（決定記録002） |
+| D1 | **検索方式** | ~~D: `LIKE '%語%'`~~ / **B: FTS5+アプリ側bigram** | ✅**確定: 初期からB**（2026-07-01決定）。PGroonga相当の精度・bm25ランキングを再現。移行スクリプトにbigram列/FTS5生成を含める。将来Dへ退行しない |
 | D2 | **SQLiteレプリカ/永続化** | LiteFS / Litestream / 単一ボリューム | まず**単一マシン+Litestream(R2/S3日次)**で開始、スケール時LiteFS |
 | D3 | **管理者認証** | Basic認証 / セッション認証（Cookie） | Admin限定Cookie+IP制限。Supabase Auth廃止に伴う要設計 |
 | D4 | **マイグレーション管理** | alembic / 素のSQL + バージョン表 | SQLite規模なら軽量でよい。要決定 |
@@ -161,16 +167,17 @@ meigen-fly/
 | D6 | **ランキング再計算の起動** | Fly Machines cron / アプリ内スケジューラ / 手動 | `pg_cron`廃止の代替。頻度と起動方式を決める |
 | D7 | **SQLiteバージョン/FTS5** | 同梱sqlite / `pysqlite3-binary` / `apsw` | FTS5有効性・trigram要3.34+を確認（決定記録002） |
 | D8 | **デザイン刷新の範囲** | 全面刷新 / 現行トーン踏襲 | 「デザイン一新」の具体要件を別途デザインガイドで定義 |
-| D9 | **いいねのbot/多重対策** | ip_hash+client_uuid / Cloudflare Turnstile | 現行踏襲＋WAFレート制限 |
+| D9 | **いいね（公開書き込み）の設計・多重対策** | 専用エンドポイント＋ip_hash+client_uuid（＋任意でTurnstile） | **公開ユーザー書き込みの唯一の経路**。レート制限・Origin/CSRF対策・重複抑制・カウント差し替え方針をまとめて設計（§3.2-2） |
 | D10 | **URL互換性** | 現行URLを完全維持するか | SEO維持のため**維持推奨**。差分は301で吸収（決定記録: URL構造） |
 | D11 | **多言語/表示言語** | `display_language_preference` の扱い | 現行仕様を踏襲 |
+| D12 | **キャッシュパージの境界** | URL列挙で即時パージ / 短TTLで自然失効 | Cloudflare Freeはタグ/prefixパージ不可。詳細＝即時列挙、一覧/ランキング＝短TTL委任の境界を確定（§5） |
 
 > これらは各々を `docs/decisions/003-...` 以降のADRとして起票し、決定次第この表を更新する。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
-- [ ] 未決論点 D1〜D11 の決定（ADR起票）
+- [ ] 未決論点 D2〜D12 の決定（ADR起票。D1=検索方式Bは確定済み）
 - [ ] リポジトリ初期化（git init, Python環境, 依存管理: uv/poetry/pip-tools 選定）
 - [ ] デザイン要件定義（D8）
 
@@ -217,8 +224,8 @@ meigen-fly/
 
 | リスク | 対策 |
 |---|---|
-| 日本語検索精度の劣化（特に2文字語） | bigram(B)採用でPGroonga相当を再現。trigram単体は不採用（決定記録002） |
-| SQLite書き込み競合 | 書き込みはAdminのみ・WAL・`busy_timeout`。読み取り中心設計 |
+| 日本語検索精度の劣化（特に2文字語） | **方式B（FTS5+bigram）を確定採用**しPGroonga相当を再現（D1）。trigram単体は不採用（決定記録002） |
+| SQLite書き込み競合 | 書き込みは原則Admin・WAL・`busy_timeout`。**匿名いいねのみ公開書き込み**だが低頻度・単純INSERTで競合影響は限定的（§3.2-2/D9） |
 | 単一マシン障害 | Litestreamバックアップ＋将来LiteFSでレプリカ |
 | URL変更によるSEO低下 | URL互換維持＋301リダイレクト（D10） |
 | OG画像/ランキングのメモリ負荷 | 事前生成・キャッシュ・軽量ライブラリ選定（D5/D6） |
@@ -247,5 +254,5 @@ meigen-fly/
 ## 12. 次のアクション
 
 1. 本計画書レビュー・合意
-2. 未決論点 **D1（検索）・D2（永続化）・D3（認証）** を優先決定しADR化
+2. 未決論点 **D2（永続化）・D3（認証）・D9（いいね公開書き込み）・D12（パージ境界）** を優先決定しADR化（D1=検索方式Bは確定済み）
 3. リポジトリ初期化 → フェーズ1着手

@@ -120,6 +120,7 @@ quotes / authors / categories / characters / sources / source_types / profession
 ```
 
 - **キャッシュ**: パスごとに `Cache-Control` をMiddlewareで一元管理。`/search` と `/admin/*` は `private, no-store`。公開ページは `s-maxage` を長め・`max-age` を短めに。
+  - ⚠️ **HTMLはCloudflareのデフォルトでキャッシュされない**（拡張子ベースでCSS/JS/画像のみ）。`Cache-Control` を返すだけでは不十分で、**公開HTMLパスに Cache Rules で「Eligible for cache（Cache Everything相当）」を明示**する必要がある。かつ `/admin/*`・`/search*`・いいね断片APIは**先にBypass**する（順序重要）。詳細は決定記録001 §8。
 - **パージ**: Admin更新時に Cloudflare API で該当URL/タグ/プレフィックスをパージ。
   - ✅ **Cloudflare Free でも利用可能な方式**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag / Prefix / Purge Everything すべて Free で使える**（旧記述「タグ/prefixはEnterprise限定」は誤りのため訂正）。
   - ⚠️ **Free のレート制限**: Tag/Prefix/Hostname/Purge Everything は **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高く **800 URLs/秒・1リクエスト最大100URL**（Free）。→ **一括登録など短時間の大量更新でタグ/prefixを多用すると 5/分 に当たる**点が実運用上の論点。
@@ -171,7 +172,7 @@ meigen-fly/
 | D9 | **いいね（公開書き込み）の設計・多重対策** | 専用エンドポイント＋ip_hash+client_uuid（＋任意でTurnstile） | **公開ユーザー書き込みの唯一の経路**。レート制限・Origin/CSRF対策・重複抑制・カウント差し替え方針をまとめて設計（§3.2-2） |
 | D10 | **URL互換性** | 現行URLを完全維持するか | SEO維持のため**維持推奨**。差分は301で吸収（決定記録: URL構造） |
 | D11 | **多言語/表示言語** | `display_language_preference` の扱い | 現行仕様を踏襲 |
-| D12 | **キャッシュパージの使い分け** | URLパージ / タグ・prefixパージ / 短TTL委任 | **Freeでも URL/Tag/Prefix/全パージ可**。ただしTag/Prefixは**5req/分・100ops/req**。詳細＝URL即時、広範＝タグ（バッチ集約）、収まらない分＝短TTLの境界を確定（§5） |
+| D12 | **キャッシュパージの使い分け** | URLパージ / タグ・prefixパージ / 短TTL委任 | **Freeでも URL/Tag/Prefix/全パージ可**（2025-04開放）。URLは800/秒・100/req、Tag/Prefixは**5req/分・100ops/req**。詳細＝URL即時、広範＝タグ（バッチ集約）、収まらない分＝短TTL。**タグ名は短い小文字ASCII**（スペース不可・合計16KB上限）で統一（§5） |
 
 > これらは各々を `docs/decisions/003-...` 以降のADRとして起票し、決定次第この表を更新する。
 

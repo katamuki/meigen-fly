@@ -22,9 +22,9 @@
 
 ## 2. キャッシュ戦略の基本方針
 
-- **公開ページはすべて Cloudflare のエッジキャッシュを効かせる**
+- **公開ページはすべて Cloudflare のエッジキャッシュを効かせる**（※HTMLはデフォルト非キャッシュのため Cache Rules で明示。§8参照）
 - **検索ページと Admin ページは絶対にキャッシュしない**
-- **更新時は該当URLだけ Cloudflare API でパージする**
+- **更新時は該当URL/タグを Cloudflare API でパージする**（個別=URL、広範=タグ。§5参照）
 - ブラウザキャッシュ（`max-age`）は短め、エッジキャッシュ（`s-maxage`）は長めにする
   - 誤った内容を配信した場合、パージすればエッジは即座に更新できるが、ブラウザは強制更新できないため
 
@@ -144,7 +144,12 @@ async def purge_prefixes(prefixes: list[str]):  # パス配下一括: Freeは5re
     await _purge({"prefixes": prefixes})
 ```
 
-各レスポンスに `Cache-Tag` ヘッダーを付与しておくと、タグパージでまとめて無効化できる（例: 個別名言に `quote-{id}`、一覧系ページに `quotes-list` / `author-{id}` / `category-{slug}`）。
+各レスポンスに `Cache-Tag` ヘッダーを付与しておくと、タグパージでまとめて無効化できる（例: 個別名言に `quote-{id}`、一覧系ページに `quotes-list` / `author-{id}` / `category-{slug}`）。Cloudflare は visitor へ返す前に `Cache-Tag` ヘッダーを除去する（利用者からは見えない）。
+
+> ⚠️ **`Cache-Tag` の制約**（[公式](https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-tags/)）:
+> - **印字可能ASCIIのみ・スペース不可・大文字小文字は区別しない**（`Tag1` と `tag1` は同一）。→ タグ名は `author-123` / `category-slug` のような**短い小文字ASCII**に統一する。
+> - レスポンスの `Cache-Tag` ヘッダー合計は **16KB まで（≈1,000タグ）**。API パージ時の1タグは最大 **1,024文字**。
+> - 全パージ方式は **2025-04 以降 全プランで利用可能**（Free含む。タグ付け＝Cache-Tagヘッダーも Free で有効）。
 
 ### パージ対象の設計
 
@@ -245,11 +250,13 @@ primary_region = "nrt"
 
 - **DNS**: A/AAAA レコードを Fly.io のIPに向ける（proxied = ON）
 - **SSL/TLS**: Full (strict)
-- **Cache Rules**（ダッシュボードから設定）:
-  - `/admin/*`, `/search*` → Bypass cache
-  - それ以外 → Standard cache（オリジンの Cache-Control に従う）
-- **Page Rules**（必要なら）:
-  - `*.meigensyu.com/static/*` → Cache Everything, Edge TTL 1 month
+- **Cache Rules**（ダッシュボードから設定。**順序が重要＝先にBypassを評価**）:
+  1. `/admin/*`・`/search*`・**いいね断片API**（例 `/quotes/*/likes`）→ **Bypass cache**（Cookie/動的のため必ず除外）
+  2. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
+  3. `/static/*` → Eligible for cache, Edge TTL 1 month
+- ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記②の Cache Rule が必須。
+  - 参照: [Default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
+- （Page Rules は廃止方向のため **Cache Rules に統一**。旧 Page Rule 相当は上記③でカバー）
 - **WAF**:
   - Bot Fight Mode ON
   - Rate limiting: `/search` に 60req/min など

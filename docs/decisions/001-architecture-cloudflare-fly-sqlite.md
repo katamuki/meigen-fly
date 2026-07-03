@@ -24,6 +24,7 @@
 
 - **公開ページはすべて Cloudflare のエッジキャッシュを効かせる**（※HTMLはデフォルト非キャッシュのため Cache Rules で明示。§8参照）
 - **検索ページと Admin ページは絶対にキャッシュしない**
+- **`/random` は通常の公開HTMLキャッシュ対象に含めない**。`no-store` またはランダムな個別ページへの302方式を実装前に確定する
 - **更新時は該当URL/タグを Cloudflare API でパージする**（個別=URL、広範=タグ。§5参照）
 - ブラウザキャッシュ（`max-age`）は短め、エッジキャッシュ（`s-maxage`）は長めにする
   - 誤った内容を配信した場合、パージすればエッジは即座に更新できるが、ブラウザは強制更新できないため
@@ -42,6 +43,7 @@
 | `/ranking` | `public, s-maxage=600, max-age=60` | 10分 / 1分 |
 | `/about`, `/privacy`, `/terms` | `public, s-maxage=604800, max-age=86400` | 1週間 / 1日 |
 | `/api/og?*`（OG画像） | `public, s-maxage=2592000, max-age=86400` | 30日 / 1日 |
+| **`/random`** | **要決定**: `private, no-store` または 302 | ランダム固定化を防ぐ |
 | **`/search`** | `private, no-store` | キャッシュしない |
 | **`/admin/*`** | `private, no-store` | キャッシュしない |
 | `/static/*`（CSS/JS/画像） | `public, max-age=31536000, immutable` | 1年（ファイル名にハッシュ付与） |
@@ -76,6 +78,11 @@ async def cache_headers(request, call_next):
     if path.startswith(("/admin", "/search")):
         response.headers["Cache-Control"] = "private, no-store"
         return response
+    # /random はD13未決。no-store方式を採用する場合はここで除外する。
+    # 302方式を採用する場合は、この分岐ではなくルート側で個別名言へリダイレクトする。
+    if path == "/random":
+        response.headers["Cache-Control"] = "private, no-store"
+        return response
     # トップは完全一致で判定（prefix マッチの巻き込みを防ぐ）
     if path == "/":
         response.headers.setdefault("Cache-Control", ROOT_RULE)
@@ -96,6 +103,7 @@ async def cache_headers(request, call_next):
 
 - 言語切替やABテストを行わないなら `Vary` は付けない（キャッシュヒット率が下がる）
 - Cookie でセッションを持つのは Admin のみに限定する（公開ページに Cookie を付けない）
+- 匿名いいねの `client_uuid` は localStorage 管理を基本とし、公開ページに識別Cookieを載せない
 
 ### 4.4 検索ページ
 
@@ -108,6 +116,16 @@ async def cache_headers(request, call_next):
 - `/admin/*` は Basic認証 or セッション認証
 - Cookie 必須 → キャッシュ不可
 - CSRF 対策必須
+- CloudflareのIP制限だけに依存しない。`*.fly.dev` やオリジンIP直撃でWAF/IP制限を迂回されないよう、Authenticated Origin Pulls、Hostヘッダ検証、Cloudflare IPレンジ検証のいずれかを組み合わせる
+
+### 4.6 いいね数の表示
+
+ページ本体をエッジキャッシュしつつ、いいね数だけ毎PVで非キャッシュ取得すると、オリジン負荷削減効果を相殺する。D9で次のどちらかを優先候補として確定する。
+
+- HTMLへいいね数を焼き込み、短TTL/タグパージで鮮度を許容する
+- 断片APIをページ単位でバッチ化し、`s-maxage=10..60` 程度でエッジキャッシュする
+
+「押した」状態は localStorage でクライアント表示する。
 
 ## 5. キャッシュパージ
 
@@ -246,22 +264,28 @@ primary_region = "nrt"
 - `uvicorn --workers 2 --host 0.0.0.0 --port 8000`
 - ヘルスチェック `/healthz` を用意
 
+`uvicorn --workers 2` とアプリ内スケジューラは相性が悪い。同一ジョブが各workerで二重実行され得るため、ランキング/カテゴリ集計の定期再計算は Fly Machines cron、単発ジョブ、外部cron、またはロック付きの専用プロセスで実行する。
+
 ## 8. Cloudflare 設定
 
 - **DNS**: A/AAAA レコードを Fly.io のIPに向ける（proxied = ON）
 - **SSL/TLS**: Full (strict)
-- **Cache Rules**（ダッシュボードから設定。**順序が重要＝先にBypassを評価**）:
-  1. `/admin/*`・`/search*`・**いいね断片API**（例 `/quotes/*/likes`）→ **Bypass cache**（Cookie/動的のため必ず除外）
-  2. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
-  3. `/static/*` → Eligible for cache, Edge TTL 1 month
-- ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記②の Cache Rule が必須。
+- **Cache Rules**（ダッシュボードから設定。**Cache Rules は last matching rule wins**）:
+  1. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
+  2. `/static/*` → Eligible for cache, Edge TTL 1 month
+  3. `/admin/*`・`/search*`・`/random`（no-store採用時）・**いいね断片API**（例 `/quotes/*/likes`）→ **Bypass cache**（Cookie/動的のため必ず除外）
+- ⚠️ **重要**: Cache Rules は複数マッチ時に最後の一致ルールが勝つ。旧Page Rulesの「先勝ち」と逆なので、Bypassルールは公開HTMLのEligibleルールより**後（下）**に配置する。
+- ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記1の公開HTML Cache Rule が必須。
   - 参照: [Default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
+  - 参照: [Cache Rules order](https://developers.cloudflare.com/cache/how-to/cache-rules/order/)
 - （Page Rules は廃止方向のため **Cache Rules に統一**。旧 Page Rule 相当は上記③でカバー）
 - **WAF**:
   - Bot Fight Mode ON
-  - Rate limiting: `/search` に 60req/min など
+  - Rate limiting: `/search` は debounce/最小文字数とセットで閾値を決める（例: 60req/min固定だとインクリメンタル検索で正規ユーザーに当たり得る）
 - **Firewall Rules**:
   - `/admin/*` は特定IPのみ許可（可能なら）
+- **Origin protection**:
+  - Authenticated Origin Pullsを第一候補に、オリジン直撃を拒否する。採用できない場合もHostヘッダ検証またはCloudflare IPレンジ検証を入れる
 
 ## 9. デプロイ・運用
 
@@ -280,6 +304,10 @@ primary_region = "nrt"
 | `CF_API_TOKEN` | Cloudflare API Token（`Cache Purge` 権限のみ） |
 | `ADMIN_USER` / `ADMIN_PASS` | Admin 認証 |
 | `SECRET_KEY` | セッション署名鍵 |
+| `RANKING_IP_HASH_SALT` | 匿名いいねの `ip_hash` 生成 |
+| `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
+| `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時） |
+| `ORIGIN_PROTECTION_*` | AOP/Host/CF IP検証など、方式確定後に定義 |
 
 ## 11. セキュリティ
 
@@ -287,22 +315,25 @@ primary_region = "nrt"
 - CSRF トークン（Admin フォーム）
 - `SECURE`, `HTTPONLY`, `SameSite=Lax` の Cookie
 - CSP ヘッダー（インラインJS禁止）
+- HTMX利用時は `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を原則禁止し、`unsafe-eval` なしのCSPと整合させる。必要な場合は hx-csp 等を検討する
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 
 ## 12. 段階的リリース手順
 
 1. Fly.io に新環境をデプロイ（別サブドメイン `new.meigensyu.com`）
-2. データ移行（旧DB → 新SQLite）
-3. 動作確認・キャッシュヘッダー検証（`curl -I` で確認）
-4. Cloudflare を経由させて動作確認
-5. DNS を切り替え（TTL を事前に短くしておく）
-6. 旧環境は 1〜2週間維持し、問題なければ廃止
+2. `new.meigensyu.com` は `noindex` / robots deny を有効化
+3. データ移行（旧DB → 新SQLite）
+4. 動作確認・キャッシュヘッダー検証（`curl -I` で確認）
+5. Cloudflare を経由させて動作確認
+6. DNS切替直前に差分再移行、または旧環境のAdmin/いいね書き込みを短時間凍結
+7. DNS を切り替え（TTL を事前に短くしておく）
+8. 旧環境は 1〜2週間維持し、問題なければ廃止
 
 ## 13. 期待効果
 
 - **TTFB 短縮**: エッジキャッシュヒット時は 20〜50ms
-- **オリジン負荷 90%以上削減**: 公開ページはほぼエッジで返る
+- **オリジン負荷削減**: 公開ページはエッジで返す。90%以上削減を狙うには、いいね数取得を毎PV非キャッシュにしない設計（D9）が必要
 - **Fly.io 帯域コスト削減**
 - **SEO 改善**: Core Web Vitals の LCP/TTFB 向上
 - **DDoS / Bot 対策**: Cloudflare のレイヤーで自動対応
@@ -312,9 +343,11 @@ primary_region = "nrt"
 - [ ] `/quotes/q1342` に `Cache-Control: public, s-maxage=86400...` が付いている
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
 - [ ] `/admin/` に `Cache-Control: private, no-store` が付いている
+- [ ] `/random` がD13で決めた方式どおりにキャッシュ固定化しない
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている
 - [ ] `/healthz` が 200 を返す
 - [ ] OG画像 `/api/og?type=quote&id=...` がエッジキャッシュされる
-
+- [ ] Cloudflareを経由しないオリジン直撃が拒否される
+- [ ] `new.` サブドメインがインデックス不可になっている

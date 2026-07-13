@@ -4,6 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
+> - 更新日: 2026-07-13（D2 日次バックアップ、D4 Alembicを確定）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -15,8 +16,10 @@
 |---|---|
 | [`docs/decisions/001-architecture-cloudflare-fly-sqlite.md`](decisions/001-architecture-cloudflare-fly-sqlite.md) | 全体構成・キャッシュ戦略・Cloudflare/Fly.io/SQLite 構成の詳細（確定寄り） |
 | [`docs/decisions/002-sqlite-japanese-search.md`](decisions/002-sqlite-japanese-search.md) | 日本語全文検索の方式検討（PGroonga → SQLite FTS5 bigram / LIKE） |
+| [`docs/decisions/003-sqlite-daily-backup.md`](decisions/003-sqlite-daily-backup.md) | 単一Machine・日次SQLiteオンラインバックアップ・復旧方針 |
+| [`docs/decisions/004-alembic-migrations.md`](decisions/004-alembic-migrations.md) | SQLAlchemy Core + Alembicによるマイグレーション方針 |
 
-本計画書はこの2つを束ねる上位文書。矛盾が生じた場合は本計画書の「確定事項」を優先し、決定記録を更新する。
+本計画書はこれらを束ねる上位文書。高レベルの確定事項は本計画書、各方式の実装・運用詳細は対応するADRを正本とし、矛盾を見つけた場合は双方を更新する。
 
 ---
 
@@ -37,11 +40,13 @@
 | アプリ | **FastAPI + Uvicorn**（SSR、Jinja2 テンプレート） |
 | フロント | **HTMX**（+ 最小限のCSS/JS。SPAフレームワークは使わない） |
 | DB | **SQLite**（`/data` ボリューム、WALモード） |
+| 永続化・バックアップ | **単一Machine + Fly Volume**。Online Backup APIで日次バックアップを作りR2へ保存。Fly snapshotは二次復旧手段 |
+| マイグレーション | **SQLAlchemy Core + Alembic**（手書きrevision中心） |
 | CDN/WAF | **Cloudflare**（無料プラン想定、エッジキャッシュ・Bot対策） |
 | 開発言語 | Python（3.12系想定） |
 | ドメイン | 既存ドメインを最終的に切替（段階リリース） |
 
-> ⚠️ 上記より下流（LiteFS or Litestream、管理者認証方式、パージ運用 等）は **未決**。第7章「検討事項」で扱う。検索方式は**方式B（FTS5+bigram）で確定済み**（D1）。
+> ⚠️ 管理者認証方式、パージ運用等は **未決**。第7章「検討事項」で扱う。検索方式（D1）、永続化・バックアップ（D2）、マイグレーション（D4）は確定済み。
 
 ## 3. スコープ（何を作り変えるか）
 
@@ -106,7 +111,7 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 |---|---|
 | `SERIAL` / `BIGSERIAL` | 原則 `INTEGER PRIMARY KEY`。SQLiteの `AUTOINCREMENT` はID再利用を厳密に禁止したいテーブルだけ使う |
 | ENUM（`date_precision`, `life_era`） | `TEXT` + `CHECK`制約 |
-| `TIMESTAMPTZ` | **要決定（D4）**: `TEXT`(ISO8601, UTC) または `INTEGER`(epoch)。アプリ・移行スクリプト・比較クエリで統一する |
+| `TIMESTAMPTZ` | **要決定（D17）**: `TEXT`(ISO8601, UTC) または `INTEGER`(epoch)。アプリ・移行スクリプト・比較クエリで統一する |
 | `JSONB` | アプリ層でJOIN構築（RPCのJSONB返却は廃止しPython側で組む） |
 | `EXCLUDE`制約（生誕国排他） | アプリ層 or 部分UNIQUEインデックスで代替 |
 | RLS / `is_admin()` | 書き込みは原則Admin経路のみ（アプリ層で担保）。**例外は匿名いいねの専用書き込み経路のみ**（§3.2-2 / D9） |
@@ -176,7 +181,7 @@ meigen-fly/
 │   └── static/                # CSS/JS/画像（ファイル名ハッシュ）
 ├── data/                      # SQLite（本番はFlyボリューム）
 ├── scripts/                   # 移行・bigram生成・ランキング再計算・sitemap生成
-├── migrations/                # スキーマ管理（alembic or 素のSQL）
+├── migrations/                # Alembic revision（FTS5等は手書き）
 ├── tests/
 ├── Dockerfile
 ├── fly.toml
@@ -191,9 +196,9 @@ meigen-fly/
 | # | 論点 | 選択肢 | 推奨/メモ |
 |---|---|---|---|
 | D1 | **検索方式** | ~~D: `LIKE '%語%'`~~ / **B: FTS5+アプリ側bigram** | ✅**確定: 初期からB**（2026-07-01決定）。PGroonga相当の精度・bm25ランキングを再現。移行スクリプトにbigram列/FTS5生成を含める。将来Dへ退行しない |
-| D2 | **SQLiteレプリカ/永続化** | LiteFS / Litestream / 単一ボリューム | まず**単一マシン+Litestream(R2/S3日次)**で開始、スケール時LiteFS |
+| D2 | **SQLite永続化・バックアップ・復旧** | 単一Machine + 日次オンラインバックアップ | ✅**確定（2026-07-13）**: LiteFS/Litestreamは採用しない。Online Backup APIで日次バックアップをR2へ保存し、Fly snapshotを二次復旧手段とする。正常時RPO約24時間、手動復旧（詳細はADR 003） |
 | D3 | **管理者認証** | Basic認証 / セッション認証（Cookie） | Admin限定Cookie+IP制限。Supabase Auth廃止に伴う要設計 |
-| D4 | **マイグレーション管理** | alembic / 素のSQL + バージョン表 | SQLite規模なら軽量でよい。要決定 |
+| D4 | **マイグレーション管理** | SQLAlchemy Core + Alembic | ✅**確定（2026-07-13）**: autogenerateは下書き、FTS5・トリガー・ビュー・データ変換は手書きrevision。SQLite変更はbatch migration（ADR 004） |
 | D5 | **OG画像生成** | Pillow / Playwright / satori相当 | 常駐メモリと相談。事前生成（ビルド時）＋キャッシュも検討 |
 | D6 | **集計再計算の起動** | Fly Machines cron / アプリ内スケジューラ / 手動 / リアルタイムSQL化 | `pg_cron`廃止の代替。ランキングに加え `categories_with_counts` も対象。`uvicorn --workers 2` でのアプリ内スケジューラは二重実行対策が必要 |
 | D7 | **SQLiteバージョン/FTS5** | 同梱sqlite / `pysqlite3-binary` / `apsw` | 主条件は**FTS5有効性**と**`unicode61`でbigram済みテキストを扱えること**（方式B）。古い場合は `pysqlite3-binary`/`apsw` で同梱（決定記録002） |
@@ -206,13 +211,14 @@ meigen-fly/
 | D14 | **オリジン保護** | Authenticated Origin Pulls / Hostヘッダ検証 / CF IPレンジ検証 | Cloudflare迂回を防ぐ。AOPを第一候補にD3と一体で設計 |
 | D15 | **検索レート制限** | Cloudflare Rate Limiting + debounce/最小文字数 | 60req/min固定では300ms debounceのインクリメンタル検索と衝突し得る。閾値・debounce・最小文字数をセットで確定 |
 | D16 | **CSPとHTMX規約** | `hx-on` 禁止 / hx-csp導入 / `unsafe-eval` 許容 | 原則 `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を使わず、インラインJS禁止CSPと整合させる |
+| D17 | **日時のSQLite保存形式** | `TEXT`（ISO 8601 UTC）/ `INTEGER`（epoch） | 旧D4の番号重複を解消して分離。アプリ・移行スクリプト・比較クエリで統一する。要決定 |
 
-> これらは各々を `docs/decisions/003-...` 以降のADRとして起票し、決定次第この表を更新する。
+> 残る未決事項は `docs/decisions/005-...` 以降のADRとして起票し、決定次第この表を更新する。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
-- [ ] 未決論点 D2〜D16 の決定（ADR起票。D1=検索方式Bは確定済み）
+- [ ] 未決論点 D3・D5〜D17 の決定（D1・D2・D4は確定済み）
 - [ ] リポジトリ初期化（git init, Python環境, 依存管理: uv/poetry/pip-tools 選定）
 - [ ] デザイン要件定義（D8）
 
@@ -246,7 +252,8 @@ meigen-fly/
 
 ### フェーズ5: デプロイ・インフラ
 - [ ] Dockerfile / fly.toml / ボリューム
-- [ ] Litestream or LiteFS（D2）
+- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、失敗通知（D2/ADR 003）
+- [ ] Fly Volume snapshot保持設定、復旧runbook、月次復元演習（D2/ADR 003）
 - [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）
 - [ ] Authenticated Origin Pulls等のオリジン直撃対策（D14）
 - [ ] CI/CD（GitHub Actions → flyctl deploy）
@@ -266,7 +273,8 @@ meigen-fly/
 |---|---|
 | 日本語検索精度の劣化（特に2文字語） | **方式B（FTS5+bigram）を確定採用**しPGroonga相当を再現（D1）。trigram単体は不採用（決定記録002） |
 | SQLite書き込み競合 | 書き込みは原則Admin・WAL・`busy_timeout`。**匿名いいねのみ公開書き込み**だが低頻度・単純INSERTで競合影響は限定的（§3.2-2/D9） |
-| 単一マシン障害 | Litestreamバックアップ＋将来LiteFSでレプリカ |
+| 単一マシン/Volume障害 | R2の日次バックアップから手動復旧。Fly snapshotは二次手段。正常時も最大約24時間の更新欠損を許容し、ジョブ失敗・未検知時はRPO超過となるため最新成功時刻を監視（D2/ADR 003） |
+| 稼働中SQLiteの不整合バックアップ | 単純なファイルコピーを禁止し、Online Backup APIで一貫したスナップショットを作成。`integrity_check`とSHA-256を検証（D2/ADR 003） |
 | URL変更によるSEO低下 | URL互換維持＋301リダイレクト（D10） |
 | OG画像/ランキングのメモリ負荷 | 事前生成・キャッシュ・軽量ライブラリ選定（D5/D6） |
 | 移行時のデータ欠損/文字化け | 件数・関連・サンプル比較の検証スクリプト |
@@ -279,7 +287,7 @@ meigen-fly/
 
 | 変数 | 用途 |
 |---|---|
-| `DATABASE_URL` | SQLiteパス（例 `/data/app.db`） |
+| `DATABASE_URL` | SQLite絶対パス（例 `sqlite:////data/app.db`） |
 | `CF_ZONE_ID` / `CF_API_TOKEN` | Cloudflareキャッシュパージ |
 | `ADMIN_USER` / `ADMIN_PASS` | 管理者認証 |
 | `SECRET_KEY` | セッション署名 |
@@ -287,7 +295,8 @@ meigen-fly/
 | `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
 | `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時。`ads.txt` 相当も移植） |
 | `ORIGIN_PROTECTION_*` | AOP/Host/CF IP検証など、D14で方式確定後に定義 |
-| `LITESTREAM_*` / `R2_*` | バックアップ先（採用時） |
+| `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
+| `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
 ## 11. 検収チェックリスト（抜粋・決定記録001 §14）
 
@@ -296,10 +305,13 @@ meigen-fly/
 - [ ] 2文字検索（例「人生」）が正しくヒット
 - [ ] Admin更新後に該当URLがパージされ最新反映
 - [ ] SQLiteがWALで稼働・`/healthz` 200
+- [ ] 毎日03:30 JSTまでに当日分がR2に存在し、最新成功から25時間を超えた場合または失敗を検知・通知できる
+- [ ] R2バックアップからの復元演習が成功し、`integrity_check`・Alembic revision・主要件数が一致する
+- [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
 - [ ] 主要現行URLが200 or 301で到達（SEO互換）
 
 ## 12. 次のアクション
 
 1. 本計画書レビュー・合意
-2. 未決論点 **D2（永続化）・D3/D14（認証・オリジン保護）・D9（いいね公開書き込み）・D12（パージ境界）・D13（`/random`）** を優先決定しADR化（D1=検索方式Bは確定済み）
+2. 未決論点 **D3/D14（認証・オリジン保護）・D9（いいね公開書き込み）・D12（パージ境界）・D13（`/random`）** を優先決定しADR化（D1・D2・D4は確定済み）
 3. リポジトリ初期化 → フェーズ1着手

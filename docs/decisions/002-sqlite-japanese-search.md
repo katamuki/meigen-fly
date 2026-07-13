@@ -130,7 +130,7 @@ bigramトークナイザをCで実装し `load_extension` で読み込む（永�
 - **Python同梱SQLiteのバージョン確認**: 主条件は **FTS5が有効** で **`unicode61` トークナイザにbigram済みテキストを格納できる**こと（方式B）。FTS5さえ有効なら広いバージョンで動く。古い/FTS5無効の場合は `pip install pysqlite3-binary` か `apsw` で同梱（追加コストなし）。※`trigram` トークナイザを使う場合のみ SQLite 3.34.0以降が要るが、方式Bでは不要（補足）。
 - **`authors` もFTS5化する**: 現状authorsには全文検索インデックスが無くシーケンシャルスキャンだったため、移管を機にFTS5化して改善する。
 - **HTMXとの相性**: 検索結果のpartial HTMLを返すだけなので、`hx-get="/search"` + `hx-trigger="keyup changed delay:300ms"` でインクリメンタル検索を軽量に実装できる。
-- **バックアップ/運用**: SQLiteはファイル1個のためコピーでバックアップ可。継続レプリが必要なら `litestream` でS3へ安価にレプリケーション可能。
+- **バックアップ/運用**: 初期構成ではLiteFS/Litestreamを採用しない。WAL稼働中のDBを単純に `cp` せず、SQLite Online Backup APIで整合したDBを日次生成してR2へ保存する（詳細は [`003-sqlite-daily-backup.md`](003-sqlite-daily-backup.md)）。
 - **移行作業**: Supabase(PostgreSQL)からSQLiteへ移す際、元テキスト（`text/text_en/context_note`等）は保持しつつ、検索用のbigramカラム/FTS5テーブルを派生生成するビルドスクリプトを用意する。現状 `search_quotes` の重み付けロジック（本文一致優先）はFTS5 bm25 + 補助ソートへ置き換える。
 
 ## 次のアクション（未着手）

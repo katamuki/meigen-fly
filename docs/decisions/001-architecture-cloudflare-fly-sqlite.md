@@ -12,13 +12,16 @@
 [Fly.io (FastAPI + Uvicorn)]
      │
      ▼
-[SQLite (LiteFS or Litestream で永続化・レプリカ)]
+[SQLite (単一 Fly Volume、WAL)]
+     │
+     └─ 日次 Online Backup API → Cloudflare R2
 ```
 
 - **フロント**: FastAPI + Jinja2 テンプレートで HTML を返す SSR 構成
 - **DB**: SQLite。書き込みは**原則 Admin のみ**（例外は匿名いいねの専用書き込み経路）、読み取り中心
 - **CDN**: Cloudflare（無料プランで十分）
 - **ホスティング**: Fly.io（東京リージョン `nrt` 推奨）
+- **バックアップ**: 毎日03:00 JSTに整合したSQLiteバックアップをR2へ保存。Fly Volume snapshotは二次復旧手段
 
 ## 2. キャッシュ戦略の基本方針
 
@@ -187,15 +190,19 @@ async def purge_prefixes(prefixes: list[str]):  # パス配下一括: Freeは5re
 
 ## 6. SQLite 構成
 
-### 6.1 レプリカ戦略（どちらか選択）
+### 6.1 永続化・バックアップ・復旧（確定）
 
-- **LiteFS**（推奨）
-  - Fly.io 公式、マルチリージョン対応、リアルタイム同期
-  - 書き込みはプライマリ、読み取りはローカルレプリカから
-- **Litestream**
-  - S3 / R2 にストリーミングバックアップ
-  - 復旧用途、リアルタイムレプリカではない
-  - 単一マシン構成なら十分
+**単一 Fly Machine + Fly Volume + 日次SQLiteオンラインバックアップ**を採用する（ADR 003）。初期構成ではLiteFS/Litestreamを使わず、継続レプリケーションと自動フェイルオーバーは行わない。
+
+- 稼働中のSQLiteファイルを単純に `cp` しない。Python `sqlite3.Connection.backup()`（SQLite Online Backup API）で一貫した一時DBを生成する。
+- 毎日03:00 JSTに、Uvicorn workerとは独立した専用 `supercronic` プロセスから単一ジョブを実行する。
+- 一時DBの整合性を検証し、圧縮済み成果物とSHA-256 sidecarをUTCタイムスタンプ付きの名前でCloudflare R2へアップロードする。
+- 失敗時はリトライ・通知し、03:30 JSTまでに当日分がない場合、または最新成功から25時間を超えた場合にアラートにする。
+- 専用R2バケットの `daily/` prefixに30日のBucket LockとLifecycleを設定する。Fly Volumeの日次snapshotは14日保持する二次復旧手段とする。
+- 正常に日次ジョブが動いている場合のRPOは約24時間、RTOは30分〜数時間を暫定目標とする。ジョブ失敗・未検知時はRPOを超過する。
+- Admin一括更新、データ移行、Alembic migration前にはオンデマンドバックアップを取得する。
+
+復旧時はR2のバックアップを別パスへ取得し、SHA-256、`integrity_check`、Alembic revision、主要件数を検証してからDBを切り替える。月1回、実際の復元演習を行う。詳細は [`003-sqlite-daily-backup.md`](003-sqlite-daily-backup.md) を参照。
 
 ### 6.2 SQLite 設定
 
@@ -242,7 +249,7 @@ primary_region = "nrt"
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1
 
@@ -253,15 +260,18 @@ primary_region = "nrt"
 [mounts]
   source = "data"
   destination = "/data"
+  snapshot_retention = 14
 ```
 
 - SQLite は `/data` にマウントされたボリュームに置く
-- 最初は 1 マシンで十分。負荷が上がったら LiteFS でスケール
+- 初期構成は1 Machineとし、日次ジョブを確実に実行するため常時起動する
+- 高可用性や複数リージョンDBが必要になった場合は、SQLiteレプリケーションだけでなくマネージドDBも含めて再設計する
 
 ### 7.2 Dockerfile 要点
 
 - `python:3.12-slim` ベース
 - `uvicorn --workers 2 --host 0.0.0.0 --port 8000`
+- entrypointで `supercronic` をcompanion processとして起動し、Uvicornを主プロセスとして `exec` する。バックアップ鮮度監視でジョブプロセス停止も検知する
 - ヘルスチェック `/healthz` を用意
 
 `uvicorn --workers 2` とアプリ内スケジューラは相性が悪い。同一ジョブが各workerで二重実行され得るため、ランキング/カテゴリ集計の定期再計算は Fly Machines cron、単発ジョブ、外部cron、またはロック付きの専用プロセスで実行する。
@@ -290,16 +300,19 @@ primary_region = "nrt"
 ## 9. デプロイ・運用
 
 - CI/CD: GitHub Actions → `flyctl deploy`
-- マイグレーション: `alembic` で管理、デプロイ時に自動実行
+- マイグレーション: SQLAlchemy Core + `alembic` で管理（ADR 004）。autogenerateは下書きに限定し、FTS5・トリガー・ビュー・データ変換は手書きrevisionにする
+- SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineでUvicorn worker起動前に一度だけ実行する
+- migration時は「書き込み停止 → オンデマンドバックアップ → `integrity_check` → R2アップロード成功確認 → `alembic upgrade head` → アプリ起動・確認 → 書き込み再開」の順にする
 - ログ: Fly.io の標準ログ + Cloudflare Analytics
 - 監視: Fly.io メトリクス + UptimeRobot などで外形監視
-- バックアップ: Litestream で日次バックアップ（LiteFS 使用時も併用推奨）
+- バックアップ: SQLite Online Backup APIによる日次R2保存。バックアップ失敗と最新成功時刻を監視し、月1回復元演習を行う
+- Fly Volume snapshot: 14日保持する二次復旧手段。主要バックアップはR2とする
 
 ## 10. 環境変数
 
 | 変数名 | 用途 |
 |---|---|
-| `DATABASE_URL` | SQLite ファイルパス（例: `sqlite:///data/app.db`） |
+| `DATABASE_URL` | SQLite絶対パス（例: `sqlite:////data/app.db`） |
 | `CF_ZONE_ID` | Cloudflare Zone ID |
 | `CF_API_TOKEN` | Cloudflare API Token（`Cache Purge` 権限のみ） |
 | `ADMIN_USER` / `ADMIN_PASS` | Admin 認証 |
@@ -308,6 +321,8 @@ primary_region = "nrt"
 | `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
 | `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時） |
 | `ORIGIN_PROTECTION_*` | AOP/Host/CF IP検証など、方式確定後に定義 |
+| `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
+| `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
 ## 11. セキュリティ
 
@@ -347,6 +362,9 @@ primary_region = "nrt"
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている
+- [ ] 毎日03:30 JSTまでに当日分がR2にあり、最新成功から25時間を超えた場合または失敗時に通知される
+- [ ] R2バックアップから別DBへの復元、SHA-256、`integrity_check`、Alembic revision、主要件数の検証に成功する
+- [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
 - [ ] `/healthz` が 200 を返す
 - [ ] OG画像 `/api/og?type=quote&id=...` がエッジキャッシュされる
 - [ ] Cloudflareを経由しないオリジン直撃が拒否される

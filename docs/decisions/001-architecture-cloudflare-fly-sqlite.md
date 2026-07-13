@@ -37,8 +37,8 @@
 | パス | Cache-Control | 想定TTL |
 |---|---|---|
 | `/`（トップ） | `public, s-maxage=300, max-age=60` | 5分 / 1分 |
-| `/quotes`（一覧） | `public, s-maxage=600, max-age=60` | 10分 / 1分 |
-| `/quotes/{id}`（個別名言） | `public, s-maxage=86400, max-age=3600` | 1日 / 1時間 |
+| `/quotes*`（一覧・ページング・latest） | `public, s-maxage=600, max-age=60` | 10分 / 1分 |
+| `/quotes/{id}`（個別名言） | `public, s-maxage=600, max-age=60` | 10分 / 1分（いいね数を含む） |
 | `/authors`（一覧） | `public, s-maxage=3600, max-age=300` | 1時間 / 5分 |
 | `/authors/{slug}`（著者詳細） | `public, s-maxage=86400, max-age=3600` | 1日 / 1時間 |
 | `/categories`, `/categories/{slug}` | `public, s-maxage=3600, max-age=600` | 1時間 / 10分 |
@@ -49,6 +49,7 @@
 | **`/random`** | **要決定**: `private, no-store` または 302 | ランダム固定化を防ぐ |
 | **`/search`** | `private, no-store` | キャッシュしない |
 | **`/admin/*`** | `private, no-store` | キャッシュしない |
+| **`POST /api/likes/*`** | `private, no-store` | キャッシュしない |
 | `/static/*`（CSS/JS/画像） | `public, max-age=31536000, immutable` | 1年（ファイル名にハッシュ付与） |
 
 ## 4. FastAPI 実装ポイント
@@ -100,7 +101,7 @@ async def cache_headers(request, call_next):
 
 ### 4.2 ETag / 304 対応
 
-個別名言・著者ページは `updated_at` から ETag を生成し、`If-None-Match` 一致時は 304 を返す。Cloudflare も ETag を尊重するため転送量削減に有効。
+名言・著者ページは関連データを含む合成HTMLであり、単一行の `updated_at` だけでは表現全体のETagにならない。独自ETagによる条件付き再検証は使わず、TTLとAdmin更新時のパージで更新する。
 
 ### 4.3 Vary ヘッダー
 
@@ -123,12 +124,9 @@ async def cache_headers(request, call_next):
 
 ### 4.6 いいね数の表示
 
-ページ本体をエッジキャッシュしつつ、いいね数だけ毎PVで非キャッシュ取得すると、オリジン負荷削減効果を相殺する。D9で次のどちらかを優先候補として確定する。
+名言詳細と一覧（`/quotes*`、`/quotes/latest*`）のSSR HTMLへいいね数を含め、`s-maxage=600, max-age=60` でキャッシュする。毎PVで件数を取得するGET/HTMX断片APIは作らず、いいねごとのCloudflareパージも行わない。
 
-- HTMLへいいね数を焼き込み、短TTL/タグパージで鮮度を許容する
-- 断片APIをページ単位でバッチ化し、`s-maxage=10..60` 程度でエッジキャッシュする
-
-「押した」状態は localStorage でクライアント表示する。
+登録は公開HTMLと分離した `POST /api/likes/{quote_id}` で受け、`private, no-store` とCloudflare Bypassを必須にする。成功応答で最新件数を返し、押した本人のDOMだけ即時更新する。TTL内の再読込で一時的に古い件数へ戻ることは許容し、「押した」状態はlocalStorageから復元する。詳細と残る未決事項は [`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md) を参照。
 
 ## 5. キャッシュパージ
 
@@ -270,11 +268,11 @@ primary_region = "nrt"
 ### 7.2 Dockerfile 要点
 
 - `python:3.12-slim` ベース
-- `uvicorn --workers 2 --host 0.0.0.0 --port 8000`
-- entrypointで `supercronic` をcompanion processとして起動し、Uvicornを主プロセスとして `exec` する。バックアップ鮮度監視でジョブプロセス停止も検知する
+- 初期は `uvicorn --workers 1 --host 0.0.0.0 --port 8000`
+- entrypointがmaintenance lockを取得してmigrationを完了した後、PID 1として `supervisord` をexecし、Uvicornとsupercronicを監督・再起動する
 - ヘルスチェック `/healthz` を用意
 
-`uvicorn --workers 2` とアプリ内スケジューラは相性が悪い。同一ジョブが各workerで二重実行され得るため、ランキング/カテゴリ集計の定期再計算は Fly Machines cron、単発ジョブ、外部cron、またはロック付きの専用プロセスで実行する。
+FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計を含む全定期ジョブはsupercronicからCLIとして実行し、共通maintenance lock、ジョブ別 `flock`、timeout、非ゼロ終了、失敗通知を必須にする。負荷観測後に必要な場合だけHTTP workerを2へ増やし、定期ジョブ数は増やさない（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
 
 ## 8. Cloudflare 設定
 
@@ -283,7 +281,7 @@ primary_region = "nrt"
 - **Cache Rules**（ダッシュボードから設定。**Cache Rules は last matching rule wins**）:
   1. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
   2. `/static/*` → Eligible for cache, Edge TTL 1 month
-  3. `/admin/*`・`/search*`・`/random`（no-store採用時）・**いいね断片API**（例 `/quotes/*/likes`）→ **Bypass cache**（Cookie/動的のため必ず除外）
+  3. `/admin/*`・`/search*`・`/random`（no-store採用時）・`/api/likes/*` → **Bypass cache**（Cookie/動的/公開書き込みのため必ず除外）
 - ⚠️ **重要**: Cache Rules は複数マッチ時に最後の一致ルールが勝つ。旧Page Rulesの「先勝ち」と逆なので、Bypassルールは公開HTMLのEligibleルールより**後（下）**に配置する。
 - ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記1の公開HTML Cache Rule が必須。
   - 参照: [Default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
@@ -302,7 +300,7 @@ primary_region = "nrt"
 - CI/CD: GitHub Actions → `flyctl deploy`
 - マイグレーション: SQLAlchemy Core + `alembic` で管理（ADR 004）。autogenerateは下書きに限定し、FTS5・トリガー・ビュー・データ変換は手書きrevisionにする
 - SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineでUvicorn worker起動前に一度だけ実行する
-- migration時は「書き込み停止 → オンデマンドバックアップ → `integrity_check` → R2アップロード成功確認 → `alembic upgrade head` → アプリ起動・確認 → 書き込み再開」の順にする
+- migration時は「Uvicorn/supercronicをプロセスグループ停止 → DBジョブ共有lock解放待ち → 排他maintenance lock取得 → オンデマンドバックアップ → `integrity_check` → R2アップロード成功確認 → `alembic upgrade head` → lock解放 → supervisord起動・確認」の順にする
 - ログ: Fly.io の標準ログ + Cloudflare Analytics
 - 監視: Fly.io メトリクス + UptimeRobot などで外形監視
 - バックアップ: SQLite Online Backup APIによる日次R2保存。バックアップ失敗と最新成功時刻を監視し、月1回復元演習を行う
@@ -348,20 +346,22 @@ primary_region = "nrt"
 ## 13. 期待効果
 
 - **TTFB 短縮**: エッジキャッシュヒット時は 20〜50ms
-- **オリジン負荷削減**: 公開ページはエッジで返す。90%以上削減を狙うには、いいね数取得を毎PV非キャッシュにしない設計（D9）が必要
+- **オリジン負荷削減**: 公開ページといいね数をまとめてエッジから返し、オリジン到達はキャッシュmissといいねPOST等に限定する
 - **Fly.io 帯域コスト削減**
 - **SEO 改善**: Core Web Vitals の LCP/TTFB 向上
 - **DDoS / Bot 対策**: Cloudflare のレイヤーで自動対応
 
 ## 14. 検収チェックリスト
 
-- [ ] `/quotes/q1342` に `Cache-Control: public, s-maxage=86400...` が付いている
+- [ ] `/quotes/q1342`、`/quotes`、`/quotes/page/2`、`/quotes/latest`、`/quotes/latest/page/2` に `Cache-Control: public, s-maxage=600, max-age=60` が付いている
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
 - [ ] `/admin/` に `Cache-Control: private, no-store` が付いている
+- [ ] `POST /api/likes/q1342` が `private, no-store` かつCloudflare Bypassで、GETは405を返す
 - [ ] `/random` がD13で決めた方式どおりにキャッシュ固定化しない
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている
+- [ ] Uvicorn 1/2 workerのどちらでも各定期ジョブが1回だけ実行され、supercronic停止・timeout・失敗を検知できる
 - [ ] 毎日03:30 JSTまでに当日分がR2にあり、最新成功から25時間を超えた場合または失敗時に通知される
 - [ ] R2バックアップから別DBへの復元、SHA-256、`integrity_check`、Alembic revision、主要件数の検証に成功する
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する

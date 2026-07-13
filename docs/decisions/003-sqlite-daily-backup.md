@@ -15,7 +15,7 @@
 - SQLite は東京 `nrt` の **単一 Fly Machine** に接続した **Fly Volume `/data`** で運用する。
 - **LiteFS と Litestream は初期構成では採用しない**。継続レプリケーションと複数 Machine 間の自動フェイルオーバーは行わない。
 - 稼働中の `/data/app.db` を単純に `cp` しない。WAL モードでも一貫したスナップショットを作れる **Python `sqlite3.Connection.backup()`（SQLite Online Backup API）** を使う。
-- 毎日 **03:00 JST** に同一Machine内の専用 `supercronic` プロセスから単一ジョブを実行し、Uvicorn worker 内のスケジューラでは動かさない。
+- 毎日 **03:00 JST** に同一Machine内の専用 `supercronic` プロセスから単一ジョブを実行し、Uvicorn worker 内のスケジューラでは動かさない。プロセス監督と多重起動防止は [`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md) に従う。
 - バックアップは一時DBへ出力し、`PRAGMA integrity_check`後に圧縮する。圧縮済み成果物のSHA-256を作り、成果物と `.sha256` sidecarを Cloudflare R2 へアップロードする。R2オブジェクト名にはUTCタイムスタンプを含め、上書きしない。
 - R2へのアップロード成功後に一時ファイルを削除する。失敗時はリトライし、失敗通知を送る。
 - R2上の最新成功バックアップ時刻を監視し、**03:30 JSTまでに当日分がない場合**、または最新成功から25時間を超えた場合にアラートにする。ジョブ失敗時にはRPOが24時間を超え得ることを運用上の制約として受け入れる。
@@ -28,15 +28,16 @@
 
 SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineで、Uvicorn worker起動前に一度だけ実行する。
 
-1. 公開いいねとAdmin書き込みを停止し、メンテナンス状態にする。
-2. Online Backup APIでmigration直前バックアップを作成する。
-3. `PRAGMA integrity_check`後に圧縮し、圧縮済み成果物のSHA-256を作成する。
-4. R2へのアップロード成功を確認する。
-5. `alembic upgrade head` を実行する。
-6. Uvicorn workerを起動し、`/healthz` と主要ページを確認する。
-7. 書き込みを再開する。
+1. supervisordでUvicornとsupercronicをプロセスグループ単位に停止し、子プロセスの終了を待つ。
+2. 全DBジョブ共通lockの排他lockを取得する。実行中ジョブが共有lockを解放するまで待ち、新規ジョブを開始させない。
+3. 排他lockを保持したまま、ネストしたlockを取らないmaintenance modeでOnline Backup APIによるmigration直前バックアップを作成する。
+4. `PRAGMA integrity_check`後に圧縮し、圧縮済み成果物のSHA-256を作成する。
+5. R2へのアップロード成功を確認する。
+6. `alembic upgrade head` を実行する。
+7. 排他lockを解放してsupervisordを起動し、Uvicornとsupercronic、`/healthz`、主要ページを確認する。
+8. 書き込みを再開する。
 
-migration失敗時は、旧DBに対応するアプリ版へ戻してバックアップを復元するか、復元DBへ必要なrevisionを適用してから起動する。バックアップ取得からmigration完了まで書き込みを止め、復元時の更新欠損を防ぐ。
+migration失敗時はsupervisordを起動せず、旧DBに対応するアプリ版へ戻してバックアップを復元するか、復元DBへ必要なrevisionを適用してから起動する。バックアップ取得からmigration完了まで全書き込みと定期ジョブを止め、復元時の更新欠損を防ぐ。
 
 ## 復旧手順
 

@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-13（D2 日次バックアップ、D4 Alembicを確定）
+> - 更新日: 2026-07-13（D2 日次バックアップ、D4 Alembic、D6定期ジョブ、D9表示方式を確定）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -18,6 +18,8 @@
 | [`docs/decisions/002-sqlite-japanese-search.md`](decisions/002-sqlite-japanese-search.md) | 日本語全文検索の方式検討（PGroonga → SQLite FTS5 bigram / LIKE） |
 | [`docs/decisions/003-sqlite-daily-backup.md`](decisions/003-sqlite-daily-backup.md) | 単一Machine・日次SQLiteオンラインバックアップ・復旧方針 |
 | [`docs/decisions/004-alembic-migrations.md`](decisions/004-alembic-migrations.md) | SQLAlchemy Core + Alembicによるマイグレーション方針 |
+| [`docs/decisions/005-uvicorn-supercronic-jobs.md`](decisions/005-uvicorn-supercronic-jobs.md) | Uvicorn worker数とsupercronicによる定期ジョブ実行方針 |
+| [`docs/decisions/006-like-count-cache-strategy.md`](decisions/006-like-count-cache-strategy.md) | 匿名いいね数のHTML埋め込み・キャッシュ方針 |
 
 本計画書はこれらを束ねる上位文書。高レベルの確定事項は本計画書、各方式の実装・運用詳細は対応するADRを正本とし、矛盾を見つけた場合は双方を更新する。
 
@@ -42,11 +44,12 @@
 | DB | **SQLite**（`/data` ボリューム、WALモード） |
 | 永続化・バックアップ | **単一Machine + Fly Volume**。Online Backup APIで日次バックアップを作りR2へ保存。Fly snapshotは二次復旧手段 |
 | マイグレーション | **SQLAlchemy Core + Alembic**（手書きrevision中心） |
+| アプリプロセス | 初期は **Uvicorn 1 worker**。全定期ジョブは **supercronic** で分離実行 |
 | CDN/WAF | **Cloudflare**（無料プラン想定、エッジキャッシュ・Bot対策） |
 | 開発言語 | Python（3.12系想定） |
 | ドメイン | 既存ドメインを最終的に切替（段階リリース） |
 
-> ⚠️ 管理者認証方式、パージ運用等は **未決**。第7章「検討事項」で扱う。検索方式（D1）、永続化・バックアップ（D2）、マイグレーション（D4）は確定済み。
+> ⚠️ 管理者認証方式、パージ運用等は **未決**。第7章「検討事項」で扱う。D1・D2・D4・D6と、D9の表示・キャッシュ方式は確定済み。
 
 ## 3. スコープ（何を作り変えるか）
 
@@ -76,7 +79,7 @@
 2. **匿名いいね**（`quote_likes`：client_uuid + ip_hash、重複抑制）
    - ⚠️ **本サイト唯一の「公開ユーザー書き込み」**。§4・§9の「書き込みはAdminのみ」の**明示的な例外**。専用の書き込みエンドポイントを設け、レート制限・Origin/CSRF対策・多重投票抑制を必須とする（D9）。
    - `client_uuid` は現行同様 localStorage 管理を基本とし、公開ページにユーザー識別Cookieを載せない（エッジキャッシュと両立させるため）。
-   - いいね数の表示戦略はD9で要決定。ページ本体をキャッシュしつつ毎PVで非キャッシュ断片を叩くと、オリジン負荷削減効果を相殺するため、**HTMLへ焼き込み+短TTL/パージ**、または**ページ単位バッチ断片+短い `s-maxage`**を優先候補にする。
+   - ✅ いいね数は名言詳細・一覧のSSR HTMLへ焼き込み、10分TTLで自然更新する。毎PVのGET/断片APIと、いいねごとのキャッシュパージは行わない。POSTした本人のDOMだけ応答で即時更新する（D9/ADR 006）。
 3. **ランキング**（名言/著者/カテゴリ、いいね数・weight による定期再計算）
 4. **OG画像生成**（`/api/og`：名言・著者向け動的画像）
 5. **SEO**（sitemap.xml / robots.txt / 構造化データ / メタタグ / canonical）
@@ -136,7 +139,7 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 - `view_admin_kpi_counts`
 - `view_admin_ranking_refresh_logs`
 
-`pg_cron` は少なくとも2ジョブを代替する: `refresh_quote_ranking_scores_scheduler`（ランキング）と `refresh_categories_with_counts_scheduler`（カテゴリ件数）。アプリ内スケジューラを採用する場合、`uvicorn --workers 2` では二重実行になるため、Fly Machines cron/単発ジョブ/外部cronを優先候補にする。
+`pg_cron` の少なくとも2ジョブ（ランキング、カテゴリ件数）は、バックアップを含む全定期処理とともにsupercronicからCLIとして実行する。初期はUvicorn 1 workerとし、FastAPI startup/lifespanではスケジューラを起動しない。全ジョブに多重起動ロック・timeout・失敗通知を設ける（D6/ADR 005）。
 
 > データ規模（決定記録002）: 名言 約2,100件・著者 約890件・全体 約3,000行と**小規模**。移行・検索性能上の懸念は小さい。
 
@@ -152,16 +155,16 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 ```
 
 - **キャッシュ**: パスごとに `Cache-Control` をMiddlewareで一元管理。`/search` と `/admin/*` は `private, no-store`。公開ページは `s-maxage` を長め・`max-age` を短めに。
-  - ⚠️ **HTMLはCloudflareのデフォルトでキャッシュされない**（拡張子ベースでCSS/JS/画像のみ）。`Cache-Control` を返すだけでは不十分で、**公開HTMLパスに Cache Rules で「Eligible for cache（Cache Everything相当）」を明示**する必要がある。Cache Rules は **last matching rule wins（最後にマッチしたルールが勝つ）** のため、`/admin/*`・`/search*`・`/random`（no-store採用時）・いいね断片APIのBypassルールは、公開HTMLのEligibleルールより**後（下）**に配置する。詳細は決定記録001 §8。
+  - ⚠️ **HTMLはCloudflareのデフォルトでキャッシュされない**（拡張子ベースでCSS/JS/画像のみ）。`Cache-Control` を返すだけでは不十分で、**公開HTMLパスに Cache Rules で「Eligible for cache（Cache Everything相当）」を明示**する必要がある。Cache Rules は **last matching rule wins（最後にマッチしたルールが勝つ）** のため、`/admin/*`・`/search*`・`/random`（no-store採用時）・`/api/likes/*` のBypassルールは、公開HTMLのEligibleルールより**後（下）**に配置する。詳細は決定記録001 §8。
 - **パージ**: Admin更新時に Cloudflare API で該当URL/タグ/プレフィックスをパージ。
   - ✅ **Cloudflare Free でも利用可能な方式**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag / Prefix / Purge Everything すべて Free で使える**（旧記述「タグ/prefixはEnterprise限定」は誤りのため訂正）。
   - ⚠️ **Free のレート制限**: Tag/Prefix/Hostname/Purge Everything は **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高く **800 URLs/秒・1リクエスト最大100URL**（Free）。→ **一括登録など短時間の大量更新でタグ/prefixを多用すると 5/分 に当たる**点が実運用上の論点。
   - **列挙が必要な派生URL（URLパージ採用時）**: 一覧の**全ページングURL**（`/quotes/page/N`, 著者/カテゴリ/出典の各ページ）、`/quotes/latest*`、`/ranking`、`/`、該当**OG画像** `/api/og?...`、`/sitemap.xml`。
   - **方針（D12）**: **個別詳細ページ・OGは高上限のURLパージで即時反映**。一覧/著者/カテゴリ/ランキング等の広範な無効化は、`Cache-Tag` を付与して**タグパージ**（例 `quotes-list`, `author-123`）でまとめて落とす選択肢が Free でも取れる。ただし **5リクエスト/分**の制約に収まるようバッチ集約する。制約に収まらない範囲は**短めTTL（`s-maxage`）で自然失効に委任**。URLパージ／タグパージ／TTL委任の**使い分け境界**を実装前に確定する。
-  - **いいね数**: D9で要決定。毎PV非キャッシュ取得は避け、焼き込み+短TTL/パージまたは短TTLのバッチ断片APIを優先候補にする。
+  - **いいね数**: 名言詳細・一覧HTMLへ焼き込み、10分TTLで自然更新する。毎PVのGET APIといいねごとのパージは行わない（D9/ADR 006）。
 - **オリジン保護**: Cloudflare WAF/IP制限だけでは `*.fly.dev` やオリジンIP直撃を防げない。Authenticated Origin Pulls（Free可）を第一候補に、Hostヘッダ検証・Cloudflare IPレンジ検証も含めてD3で確定する。
 - **IP取得**: Cloudflare経由の公開書き込みでは `CF-Connecting-IP` を信頼する。オリジン直撃対策とセットで、信頼できない経路からの同ヘッダー偽装を拒否する。
-- **ETag/304**: 個別名言・著者は `updated_at` からETag生成。
+- **ETag/304**: 名言・著者ページは関連データを含む合成HTMLのため、単一行の `updated_at` から独自ETagを生成しない。TTLとAdmin更新時のパージで更新する。
 - **セキュリティヘッダ**: CSP / nosniff / Referrer-Policy 等（決定記録001 §11）。
 - 詳細な Cache-Control 表・パージ対象表・fly.toml・Dockerfile要点は決定記録001を参照。
   - ⚠️ 決定記録001 §4.1 の `CACHE_RULES` サンプルは、先頭キー `/` が `startswith` で**全パスにマッチ**してしまう。実装時は**最長prefix優先**（キーを長さ降順で評価）または正規表現ルールに直すこと（決定記録001 側に注記済み）。
@@ -200,10 +203,10 @@ meigen-fly/
 | D3 | **管理者認証** | Basic認証 / セッション認証（Cookie） | Admin限定Cookie+IP制限。Supabase Auth廃止に伴う要設計 |
 | D4 | **マイグレーション管理** | SQLAlchemy Core + Alembic | ✅**確定（2026-07-13）**: autogenerateは下書き、FTS5・トリガー・ビュー・データ変換は手書きrevision。SQLite変更はbatch migration（ADR 004） |
 | D5 | **OG画像生成** | Pillow / Playwright / satori相当 | 常駐メモリと相談。事前生成（ビルド時）＋キャッシュも検討 |
-| D6 | **集計再計算の起動** | Fly Machines cron / アプリ内スケジューラ / 手動 / リアルタイムSQL化 | `pg_cron`廃止の代替。ランキングに加え `categories_with_counts` も対象。`uvicorn --workers 2` でのアプリ内スケジューラは二重実行対策が必要 |
+| D6 | **worker数・定期ジョブ実行** | Uvicorn + supercronic | ✅**確定（2026-07-13）**: 初期は1 worker。全定期処理はsupercronicから単一実行し、負荷観測後にHTTP workerだけ2へ増やす（ADR 005） |
 | D7 | **SQLiteバージョン/FTS5** | 同梱sqlite / `pysqlite3-binary` / `apsw` | 主条件は**FTS5有効性**と**`unicode61`でbigram済みテキストを扱えること**（方式B）。古い場合は `pysqlite3-binary`/`apsw` で同梱（決定記録002） |
 | D8 | **デザイン刷新の範囲** | 全面刷新 / 現行トーン踏襲 | 「デザイン一新」の具体要件を別途デザインガイドで定義 |
-| D9 | **いいね（公開書き込み）の設計・多重対策** | 専用エンドポイント＋ip_hash+client_uuid（＋任意でTurnstile） | **公開ユーザー書き込みの唯一の経路**。レート制限・Origin/CSRF対策・重複抑制・いいね数表示戦略をまとめて設計（§3.2-2）。IPはCloudflare前提で `CF-Connecting-IP` を利用 |
+| D9 | **いいね（公開書き込み）の設計・多重対策** | HTML焼き込み + 専用POST + best-effort重複抑制 | 🟡**表示方式は確定（2026-07-13）**: 詳細・一覧HTMLへ件数を含め10分TTL。毎PV GETなし。POSTはno-storeで本人だけ即時更新。保持期間・salt rotation・閾値・Turnstile条件は要決定（ADR 006） |
 | D10 | **URL互換性** | 現行URLを完全維持するか | SEO維持のため**維持推奨**。現行 `next.config.js` の静的301 20本 + middlewareの `/quotations/view/[id].html` 動的301を移植。`page/1` 正規化も含む |
 | D11 | **多言語/表示言語** | `display_language_preference` の扱い | 現行仕様を踏襲 |
 | D12 | **キャッシュパージの使い分け** | URLパージ / タグ・prefixパージ / 短TTL委任 | **Freeでも URL/Tag/Prefix/全パージ可**（2025-04開放）。URLは800/秒・100/req、Tag/Prefixは**5req/分・100ops/req**。詳細＝URL即時、広範＝タグ（バッチ集約）、収まらない分＝短TTL。**タグ名は短い小文字ASCII**（スペース不可・合計16KB上限）で統一（§5） |
@@ -213,12 +216,12 @@ meigen-fly/
 | D16 | **CSPとHTMX規約** | `hx-on` 禁止 / hx-csp導入 / `unsafe-eval` 許容 | 原則 `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を使わず、インラインJS禁止CSPと整合させる |
 | D17 | **日時のSQLite保存形式** | `TEXT`（ISO 8601 UTC）/ `INTEGER`（epoch） | 旧D4の番号重複を解消して分離。アプリ・移行スクリプト・比較クエリで統一する。要決定 |
 
-> 残る未決事項は `docs/decisions/005-...` 以降のADRとして起票し、決定次第この表を更新する。
+> 残る未決事項は `docs/decisions/007-...` 以降のADRとして起票し、決定次第この表を更新する。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
-- [ ] 未決論点 D3・D5〜D17 の決定（D1・D2・D4は確定済み）
+- [ ] 未決論点 D3・D5・D7〜D17 の決定（D1・D2・D4・D6は確定、D9は一部確定）
 - [ ] リポジトリ初期化（git init, Python環境, 依存管理: uv/poetry/pip-tools 選定）
 - [ ] デザイン要件定義（D8）
 
@@ -273,6 +276,8 @@ meigen-fly/
 |---|---|
 | 日本語検索精度の劣化（特に2文字語） | **方式B（FTS5+bigram）を確定採用**しPGroonga相当を再現（D1）。trigram単体は不採用（決定記録002） |
 | SQLite書き込み競合 | 書き込みは原則Admin・WAL・`busy_timeout`。**匿名いいねのみ公開書き込み**だが低頻度・単純INSERTで競合影響は限定的（§3.2-2/D9） |
+| 定期ジョブの二重実行・部分更新 | FastAPI内でスケジュールせずsupercronicへ分離。`flock`、timeout、失敗通知、単一transactionで前回正常結果を保持（D6/ADR 005） |
+| いいね取得が全PVでオリジン到達 | 件数を詳細・一覧HTMLへ含め10分キャッシュ。毎PV GET APIを作らず、POSTした本人だけ即時更新（D9/ADR 006） |
 | 単一マシン/Volume障害 | R2の日次バックアップから手動復旧。Fly snapshotは二次手段。正常時も最大約24時間の更新欠損を許容し、ジョブ失敗・未検知時はRPO超過となるため最新成功時刻を監視（D2/ADR 003） |
 | 稼働中SQLiteの不整合バックアップ | 単純なファイルコピーを禁止し、Online Backup APIで一貫したスナップショットを作成。`integrity_check`とSHA-256を検証（D2/ADR 003） |
 | URL変更によるSEO低下 | URL互換維持＋301リダイレクト（D10） |
@@ -305,6 +310,8 @@ meigen-fly/
 - [ ] 2文字検索（例「人生」）が正しくヒット
 - [ ] Admin更新後に該当URLがパージされ最新反映
 - [ ] SQLiteがWALで稼働・`/healthz` 200
+- [ ] Uvicorn 1/2 workerのどちらでも各定期ジョブが1回だけ動き、supercronic停止・timeout・失敗を検知できる
+- [ ] 名言詳細・一覧が10分TTLでHITし、いいねPOSTがno-store/Bypass、GETが405になる
 - [ ] 毎日03:30 JSTまでに当日分がR2に存在し、最新成功から25時間を超えた場合または失敗を検知・通知できる
 - [ ] R2バックアップからの復元演習が成功し、`integrity_check`・Alembic revision・主要件数が一致する
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
@@ -313,5 +320,5 @@ meigen-fly/
 ## 12. 次のアクション
 
 1. 本計画書レビュー・合意
-2. 未決論点 **D3/D14（認証・オリジン保護）・D9（いいね公開書き込み）・D12（パージ境界）・D13（`/random`）** を優先決定しADR化（D1・D2・D4は確定済み）
+2. 未決論点 **D3/D14（認証・オリジン保護）・D9の保持期間/不正対策閾値・D12（パージ境界）・D13（`/random`）** を優先決定しADR化（D1・D2・D4・D6、D9表示方式は確定済み）
 3. リポジトリ初期化 → フェーズ1着手

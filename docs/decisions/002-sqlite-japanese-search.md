@@ -127,7 +127,7 @@ bigramトークナイザをCで実装し `load_extension` で読み込む（永�
 ## 留意事項・補足
 
 - **形態素解析（SudachiPy/MeCab/Janome）は初期採用しない**。精度は最高だが辞書ロードで数十〜数百MBのメモリを食い、安価なFly.ioインスタンスと相性が悪い。将来精度に不満が出た場合のみ、**インデックス時（オフラインのビルドスクリプト）だけ**形態素解析を使い、本番サーバーには辞書を常駐させない案を検討する。
-- **Python同梱SQLiteのバージョン確認**: 主条件は **FTS5が有効** で **`unicode61` トークナイザにbigram済みテキストを格納できる**こと（方式B）。FTS5さえ有効なら広いバージョンで動く。古い/FTS5無効の場合は `pip install pysqlite3-binary` か `apsw` で同梱（追加コストなし）。※`trigram` トークナイザを使う場合のみ SQLite 3.34.0以降が要るが、方式Bでは不要（補足）。
+- **Python標準`sqlite3`を採用**: 最終Dockerイメージ上で **FTS5が有効** で **`unicode61` トークナイザにbigram済みテキストを格納・検索できる**ことをCIで検証する。WAL、Online Backup API、Alembicも同じイメージでスモークテストする。必要機能が不足した場合のみ代替DBAPIを別途評価し、`pysqlite3-binary`や`apsw`への自動fallbackは行わない（ADR 007）。※`trigram` トークナイザを使う場合のみ SQLite 3.34.0以降が要るが、方式Bでは不要（補足）。
 - **`authors` もFTS5化する**: 現状authorsには全文検索インデックスが無くシーケンシャルスキャンだったため、移管を機にFTS5化して改善する。
 - **HTMXとの相性**: 検索結果のpartial HTMLを返すだけなので、`hx-get="/search"` + `hx-trigger="keyup changed delay:300ms"` でインクリメンタル検索を軽量に実装できる。
 - **バックアップ/運用**: 初期構成ではLiteFS/Litestreamを採用しない。WAL稼働中のDBを単純に `cp` せず、SQLite Online Backup APIで整合したDBを日次生成してR2へ保存する（詳細は [`003-sqlite-daily-backup.md`](003-sqlite-daily-backup.md)）。
@@ -139,7 +139,7 @@ bigramトークナイザをCで実装し `load_extension` で読み込む（永�
 - [ ] Supabase → SQLite 移行スクリプト（bigramカラム/FTS5テーブル生成込み）
 - [ ] FastAPI 検索エンドポイント（現 `search_quotes`/`search_authors` 相当の置き換え）
 - [ ] HTMX検索UIの実装
-- [ ] Python同梱SQLiteのFTS5/バージョン確認
+- [x] Python標準`sqlite3`を採用し、最終DockerイメージでFTS5等をCI検証する方針を確定（ADR 007。CI実装は未着手）
 
 ## 参考リンク
 

@@ -25,9 +25,9 @@
 
 ## 2. キャッシュ戦略の基本方針
 
-- **公開ページはすべて Cloudflare のエッジキャッシュを効かせる**（※HTMLはデフォルト非キャッシュのため Cache Rules で明示。§8参照）
+- **キャッシュ可能な公開ページは Cloudflare のエッジキャッシュを効かせる**（※HTMLはデフォルト非キャッシュのため Cache Rules で明示。§8参照）
 - **検索ページと Admin ページは絶対にキャッシュしない**
-- **`/random` は通常の公開HTMLキャッシュ対象に含めない**。`no-store` またはランダムな個別ページへの302方式を実装前に確定する
+- **`/random` は現行のランダム20件一覧・シャッフルを維持し、`private, no-store`とCloudflare Bypassを適用する**（[ADR 010](010-random-page-cache.md)）
 - **更新時は該当URL/タグを Cloudflare API でパージする**（個別=URL、広範=タグ。§5参照）
 - ブラウザキャッシュ（`max-age`）は短め、エッジキャッシュ（`s-maxage`）は長めにする
   - 誤った内容を配信した場合、パージすればエッジは即座に更新できるが、ブラウザは強制更新できないため
@@ -46,7 +46,7 @@
 | `/ranking` | `public, s-maxage=600, max-age=60` | 10分 / 1分 |
 | `/about`, `/privacy`, `/terms` | `public, s-maxage=604800, max-age=86400` | 1週間 / 1日 |
 | `/api/og?*`（OG画像） | `public, s-maxage=2592000, max-age=86400` | 30日 / 1日 |
-| **`/random`** | **要決定**: `private, no-store` または 302 | ランダム固定化を防ぐ |
+| **`/random`** | `private, no-store` | 現行20件一覧を維持し、ランダム固定化を防ぐ |
 | **`/search`** | `private, no-store` | キャッシュしない |
 | **`/admin/*`** | `private, no-store` | キャッシュしない |
 | **`POST /api/likes/*`** | `private, no-store` | キャッシュしない |
@@ -82,8 +82,7 @@ async def cache_headers(request, call_next):
     if path.startswith(("/admin", "/search")):
         response.headers["Cache-Control"] = "private, no-store"
         return response
-    # /random はD13未決。no-store方式を採用する場合はここで除外する。
-    # 302方式を採用する場合は、この分岐ではなくルート側で個別名言へリダイレクトする。
+    # /random は現行のランダム一覧を維持し、常にキャッシュ対象外にする。
     if path == "/random":
         response.headers["Cache-Control"] = "private, no-store"
         return response
@@ -281,7 +280,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - **Cache Rules**（ダッシュボードから設定。**Cache Rules は last matching rule wins**）:
   1. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
   2. `/static/*` → Eligible for cache, Edge TTL 1 month
-  3. `/admin/*`・`/search*`・`/random`（no-store採用時）・`/api/likes/*` → **Bypass cache**（Cookie/動的/公開書き込みのため必ず除外）
+  3. `/admin/*`・`/search*`・`/random`・`/api/likes/*` → **Bypass cache**（Cookie/動的/公開書き込みのため必ず除外）
 - ⚠️ **重要**: Cache Rules は複数マッチ時に最後の一致ルールが勝つ。旧Page Rulesの「先勝ち」と逆なので、Bypassルールは公開HTMLのEligibleルールより**後（下）**に配置する。
 - ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記1の公開HTML Cache Rule が必須。
   - 参照: [Default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
@@ -357,7 +356,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
 - [ ] `/admin/` に `Cache-Control: private, no-store` が付いている
 - [ ] `POST /api/likes/q1342` が `private, no-store` かつCloudflare Bypassで、GETは405を返す
-- [ ] `/random` がD13で決めた方式どおりにキャッシュ固定化しない
+- [ ] `/random` が現行どおり20件のランダム一覧を返し、`private, no-store`かつCloudflare Bypassで、連続取得時に結果がキャッシュ固定化しない
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている

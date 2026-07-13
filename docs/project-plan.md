@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-13（D2 日次バックアップ、D4 Alembic、D6定期ジョブ、D9表示方式を確定）
+> - 更新日: 2026-07-13（D2、D4、D6、D7、D9表示方式、D10、D11、D13、D17を確定）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -20,6 +20,11 @@
 | [`docs/decisions/004-alembic-migrations.md`](decisions/004-alembic-migrations.md) | SQLAlchemy Core + Alembicによるマイグレーション方針 |
 | [`docs/decisions/005-uvicorn-supercronic-jobs.md`](decisions/005-uvicorn-supercronic-jobs.md) | Uvicorn worker数とsupercronicによる定期ジョブ実行方針 |
 | [`docs/decisions/006-like-count-cache-strategy.md`](decisions/006-like-count-cache-strategy.md) | 匿名いいね数のHTML埋め込み・キャッシュ方針 |
+| [`docs/decisions/007-python-sqlite-runtime.md`](decisions/007-python-sqlite-runtime.md) | Python標準sqlite3・FTS5の採用とCI検証方針 |
+| [`docs/decisions/008-url-compatibility.md`](decisions/008-url-compatibility.md) | 現行URL・リダイレクト・canonicalの互換方針 |
+| [`docs/decisions/009-quote-display-language.md`](decisions/009-quote-display-language.md) | 名言レコードごとの主表示言語とfallback仕様 |
+| [`docs/decisions/010-random-page-cache.md`](decisions/010-random-page-cache.md) | `/random`の現行機能維持とno-store方針 |
+| [`docs/decisions/011-sqlite-datetime-format.md`](decisions/011-sqlite-datetime-format.md) | SQLiteに保存する時点データの固定長UTC形式 |
 
 本計画書はこれらを束ねる上位文書。高レベルの確定事項は本計画書、各方式の実装・運用詳細は対応するADRを正本とし、矛盾を見つけた場合は双方を更新する。
 
@@ -68,7 +73,7 @@
 | `/professions`, `/professions/[slug]`, `/professions/[slug]/quotes` | 職業 | |
 | `/sources`, `/sources/[slug]`, `/sources/[slug]/page/[n]` | 出典（作品） | 種別フィルタ |
 | `/ranking` | ランキング | 名言/著者/カテゴリ |
-| `/random` | ランダム名言 | |
+| `/random` | ランダム名言20件＋シャッフル | 現行機能を維持し、`private, no-store`＋Cloudflare Bypass |
 | `/search` | 全文検索（**キャッシュ不可**） | HTMXインクリメンタル検索 |
 | `/about`, `/privacy`, `/terms` | 静的ページ | Markdown管理 |
 | `/login`, `/403` | 管理認証フロー | `/admin/*` 認証・権限エラー時の遷移先 |
@@ -114,7 +119,7 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 |---|---|
 | `SERIAL` / `BIGSERIAL` | 原則 `INTEGER PRIMARY KEY`。SQLiteの `AUTOINCREMENT` はID再利用を厳密に禁止したいテーブルだけ使う |
 | ENUM（`date_precision`, `life_era`） | `TEXT` + `CHECK`制約 |
-| `TIMESTAMPTZ` | **要決定（D17）**: `TEXT`(ISO8601, UTC) または `INTEGER`(epoch)。アプリ・移行スクリプト・比較クエリで統一する |
+| `TIMESTAMPTZ` | **固定長UTC `TEXT`**（`YYYY-MM-DDTHH:MM:SS.ffffffZ`）。明示codecで入出力し、別形式を混在させない（D17/ADR 011） |
 | `JSONB` | アプリ層でJOIN構築（RPCのJSONB返却は廃止しPython側で組む） |
 | `EXCLUDE`制約（生誕国排他） | アプリ層 or 部分UNIQUEインデックスで代替 |
 | RLS / `is_admin()` | 書き込みは原則Admin経路のみ（アプリ層で担保）。**例外は匿名いいねの専用書き込み経路のみ**（§3.2-2 / D9） |
@@ -155,7 +160,7 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 ```
 
 - **キャッシュ**: パスごとに `Cache-Control` をMiddlewareで一元管理。`/search` と `/admin/*` は `private, no-store`。公開ページは `s-maxage` を長め・`max-age` を短めに。
-  - ⚠️ **HTMLはCloudflareのデフォルトでキャッシュされない**（拡張子ベースでCSS/JS/画像のみ）。`Cache-Control` を返すだけでは不十分で、**公開HTMLパスに Cache Rules で「Eligible for cache（Cache Everything相当）」を明示**する必要がある。Cache Rules は **last matching rule wins（最後にマッチしたルールが勝つ）** のため、`/admin/*`・`/search*`・`/random`（no-store採用時）・`/api/likes/*` のBypassルールは、公開HTMLのEligibleルールより**後（下）**に配置する。詳細は決定記録001 §8。
+  - ⚠️ **HTMLはCloudflareのデフォルトでキャッシュされない**（拡張子ベースでCSS/JS/画像のみ）。`Cache-Control` を返すだけでは不十分で、**公開HTMLパスに Cache Rules で「Eligible for cache（Cache Everything相当）」を明示**する必要がある。Cache Rules は **last matching rule wins（最後にマッチしたルールが勝つ）** のため、`/admin/*`・`/search*`・`/random`・`/api/likes/*` のBypassルールは、公開HTMLのEligibleルールより**後（下）**に配置する。詳細は決定記録001 §8。
 - **パージ**: Admin更新時に Cloudflare API で該当URL/タグ/プレフィックスをパージ。
   - ✅ **Cloudflare Free でも利用可能な方式**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag / Prefix / Purge Everything すべて Free で使える**（旧記述「タグ/prefixはEnterprise限定」は誤りのため訂正）。
   - ⚠️ **Free のレート制限**: Tag/Prefix/Hostname/Purge Everything は **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高く **800 URLs/秒・1リクエスト最大100URL**（Free）。→ **一括登録など短時間の大量更新でタグ/prefixを多用すると 5/分 に当たる**点が実運用上の論点。
@@ -204,24 +209,24 @@ meigen-fly/
 | D4 | **マイグレーション管理** | SQLAlchemy Core + Alembic | ✅**確定（2026-07-13）**: autogenerateは下書き、FTS5・トリガー・ビュー・データ変換は手書きrevision。SQLite変更はbatch migration（ADR 004） |
 | D5 | **OG画像生成** | Pillow / Playwright / satori相当 | 常駐メモリと相談。事前生成（ビルド時）＋キャッシュも検討 |
 | D6 | **worker数・定期ジョブ実行** | Uvicorn + supercronic | ✅**確定（2026-07-13）**: 初期は1 worker。全定期処理はsupercronicから単一実行し、負荷観測後にHTTP workerだけ2へ増やす（ADR 005） |
-| D7 | **SQLiteバージョン/FTS5** | 同梱sqlite / `pysqlite3-binary` / `apsw` | 主条件は**FTS5有効性**と**`unicode61`でbigram済みテキストを扱えること**（方式B）。古い場合は `pysqlite3-binary`/`apsw` で同梱（決定記録002） |
+| D7 | **SQLiteバージョン/FTS5** | Python標準`sqlite3` | ✅**確定（2026-07-13）**: 標準`sqlite3`を採用し、最終Dockerイメージ上でFTS5・`unicode61`・WAL・Online Backup API・AlembicをCI検証する。失敗時の代替DBAPIは別途評価（ADR 007） |
 | D8 | **デザイン刷新の範囲** | 全面刷新 / 現行トーン踏襲 | 「デザイン一新」の具体要件を別途デザインガイドで定義 |
 | D9 | **いいね（公開書き込み）の設計・多重対策** | HTML焼き込み + 専用POST + best-effort重複抑制 | 🟡**表示方式は確定（2026-07-13）**: 詳細・一覧HTMLへ件数を含め10分TTL。毎PV GETなし。POSTはno-storeで本人だけ即時更新。保持期間・salt rotation・閾値・Turnstile条件は要決定（ADR 006） |
-| D10 | **URL互換性** | 現行URLを完全維持するか | SEO維持のため**維持推奨**。現行 `next.config.js` の静的301 20本 + middlewareの `/quotations/view/[id].html` 動的301を移植。`page/1` 正規化も含む |
-| D11 | **多言語/表示言語** | `display_language_preference` の扱い | 現行仕様を踏襲 |
+| D10 | **URL互換性** | 現行URL・意味・canonicalを完全維持 | ✅**確定（2026-07-13）**: 静的301 **23本** + middlewareの `/quotations/view/[id].html` 動的301を含め、path/query/末尾slash/page/1/404をURL契約として移植・比較検証する（ADR 008） |
+| D11 | **多言語/表示言語** | 名言レコードごとの主表示言語 | ✅**確定（2026-07-13）**: `display_language_preference`は閲覧者設定ではなく名言の主表示言語。`ja|en`、既定`ja`、指定側欠損時は他方へfallback。物理列名は維持する（ADR 009） |
 | D12 | **キャッシュパージの使い分け** | URLパージ / タグ・prefixパージ / 短TTL委任 | **Freeでも URL/Tag/Prefix/全パージ可**（2025-04開放）。URLは800/秒・100/req、Tag/Prefixは**5req/分・100ops/req**。詳細＝URL即時、広範＝タグ（バッチ集約）、収まらない分＝短TTL。**タグ名は短い小文字ASCII**（スペース不可・合計16KB上限）で統一（§5） |
-| D13 | **`/random` のキャッシュ方針** | `private, no-store` / ランダムな個別ページへ302 | 公開HTML一括キャッシュに巻き込むとTTL中同じ結果になる。推奨は302方式（オリジン負荷を抑え、個別ページは通常キャッシュ） |
+| D13 | **`/random` のキャッシュ方針** | 現行20件一覧 + `private, no-store` | ✅**確定（2026-07-13）**: 現行のランダム20件一覧・シャッフル・canonicalを維持し、Cloudflareでも明示Bypassする。個別名言への302は機能・SEO変更になるため採用しない（ADR 010） |
 | D14 | **オリジン保護** | Authenticated Origin Pulls / Hostヘッダ検証 / CF IPレンジ検証 | Cloudflare迂回を防ぐ。AOPを第一候補にD3と一体で設計 |
 | D15 | **検索レート制限** | Cloudflare Rate Limiting + debounce/最小文字数 | 60req/min固定では300ms debounceのインクリメンタル検索と衝突し得る。閾値・debounce・最小文字数をセットで確定 |
 | D16 | **CSPとHTMX規約** | `hx-on` 禁止 / hx-csp導入 / `unsafe-eval` 許容 | 原則 `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を使わず、インラインJS禁止CSPと整合させる |
-| D17 | **日時のSQLite保存形式** | `TEXT`（ISO 8601 UTC）/ `INTEGER`（epoch） | 旧D4の番号重複を解消して分離。アプリ・移行スクリプト・比較クエリで統一する。要決定 |
+| D17 | **日時のSQLite保存形式** | 固定長UTC `TEXT` | ✅**確定（2026-07-13）**: `YYYY-MM-DDTHH:MM:SS.ffffffZ`へ正規化し、明示serializer/parserを使う。暦日・歴史日付は別規則（ADR 011） |
 
-> 残る未決事項は `docs/decisions/007-...` 以降のADRとして起票し、決定次第この表を更新する。
+> 残る未決事項は `docs/decisions/012-...` 以降のADRとして起票し、決定次第この表を更新する。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
-- [ ] 未決論点 D3・D5・D7〜D17 の決定（D1・D2・D4・D6は確定、D9は一部確定）
+- [ ] 未決論点 D3・D5・D8・D9（残件）・D12・D14〜D16 の決定（D1・D2・D4・D6・D7・D10・D11・D13・D17と、D9表示方式は確定）
 - [ ] リポジトリ初期化（git init, Python環境, 依存管理: uv/poetry/pip-tools 選定）
 - [ ] デザイン要件定義（D8）
 
@@ -242,7 +247,7 @@ meigen-fly/
 - [ ] 検索（HTMXインクリメンタル・D1）
 - [ ] いいね（D9）
 - [ ] SEO（sitemap/robots/構造化データ/canonical）
-- [ ] URL互換リダイレクト（静的301 20本 + `/quotations/view/[id].html` 動的301 + `page/1` 正規化）
+- [ ] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + URL契約表に基づく正規化）
 - [ ] OG画像（D5）
 - [ ] 広告配置
 
@@ -285,7 +290,7 @@ meigen-fly/
 | 移行時のデータ欠損/文字化け | 件数・関連・サンプル比較の検証スクリプト |
 | 管理画面のセキュリティ | IP制限＋認証＋CSRF＋no-store（D3） |
 | Cloudflare迂回によるWAF/IP制限バイパス | Authenticated Origin Pulls等でオリジン直撃を拒否（D14） |
-| `/random` がエッジキャッシュされ固定化 | `no-store` またはランダム個別ページへの302方式をD13で確定 |
+| `/random` がエッジキャッシュされ固定化 | 現行20件一覧を`private, no-store`とし、Cloudflare Cache Rulesでも明示Bypass（D13/ADR 010） |
 | 段階リリース中のデータ差分 | 切替直前の差分再移行または書き込み凍結をフェーズ6に組み込む |
 
 ## 10. 環境変数（初期案・決定記録001 §10）
@@ -320,5 +325,5 @@ meigen-fly/
 ## 12. 次のアクション
 
 1. 本計画書レビュー・合意
-2. 未決論点 **D3/D14（認証・オリジン保護）・D9の保持期間/不正対策閾値・D12（パージ境界）・D13（`/random`）** を優先決定しADR化（D1・D2・D4・D6、D9表示方式は確定済み）
+2. 未決論点 **D3/D14（認証・オリジン保護）・D9の保持期間/不正対策閾値・D12（パージ境界）** を優先決定しADR化（D1・D2・D4・D6・D7・D10・D11・D13・D17、D9表示方式は確定済み）
 3. リポジトリ初期化 → フェーズ1着手

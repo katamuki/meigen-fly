@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-14（D9・D12・D15・D16を確定。D16のGA4境界を公開ページ限定へ改訂）
+> - 更新日: 2026-07-14（D9・D12・D15・D16を確定。D16をroute別CSP + 初期Auto Adsへ改訂）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -223,7 +223,7 @@ meigen-fly/
 | D13 | **`/random` のキャッシュ方針** | 現行20件一覧 + `private, no-store` | ✅**確定（2026-07-13）**: 現行のランダム20件一覧・シャッフル・canonicalを維持し、Cloudflareでも明示Bypassする。個別名言への302は機能・SEO変更になるため採用しない（ADR 010） |
 | D14 | **オリジン保護** | Cloudflare Tunnel + Fly公開入口削除 + exact Host | ✅**確定（2026-07-14）**: Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除。Uvicornはloopbackだけにbindする。AOP・CF IP allowlist・独自secret headerは不採用。管理画面のAccess JWT検証は維持する（ADR 013） |
 | D15 | **検索レート制限** | 1文字検索 + 500ms debounce + アプリ側IP制限 | ✅**確定（2026-07-14）**: 1文字検索を許可し、IME対応の外部静的JSで500ms trailing debounce。アプリを正本に30回/10秒・120回/60秒とする。Cloudflare Freeの1ルールはD9へ優先し、検索ruleは初期配置しない。429では結果を残して待ち時間を案内し、自動再試行しない（ADR 015） |
-| D16 | **CSPとHTMX規約** | 基本は同一origin + 公開ページ限定GA4 + eval機能禁止 | ✅**確定（2026-07-14）**: inline JS/style、`hx-on`、event filter、`js:`、swap内scriptを禁止し、`allowEval=false`。GA4は明示同意後の公開フルページと正規化済み検索イベントだけに限定し、管理・認証・API・HTMX断片を除外する。AdSense、nonce/hash、`unsafe-eval`、`hx-csp`は初期不採用（ADR 016） |
+| D16 | **CSPとHTMX規約** | 管理・検索は厳格Enforce / 閲覧ページは最小Enforce + Report-Only | ✅**確定（2026-07-14）**: `hx-on`、event filter、`js:`、swap内scriptとアプリ側eval/inline JSを禁止。管理・認証・検索は同一origin中心の厳格CSP、一般閲覧ページは共有HTMLキャッシュとAuto Adsを優先しresource CSPをReport-Onlyとする。GA4は同意後の公開ページ・検索eventだけ、AdSenseは対象routeのAuto Adsだけに限定（ADR 016） |
 | D17 | **日時のSQLite保存形式** | 固定長UTC `TEXT` | ✅**確定（2026-07-13）**: `YYYY-MM-DDTHH:MM:SS.ffffffZ`へ正規化し、明示serializer/parserを使う。暦日・歴史日付は別規則（ADR 011） |
 
 > 残る未決事項はD5（OG画像生成）とD8（デザイン刷新範囲）。D9・D12・D15・D16は対応ADRを正本として確定済みである。
@@ -256,7 +256,7 @@ meigen-fly/
 - [ ] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + URL契約表に基づく正規化）
 - [ ] OG画像（D5）
 - [ ] GA4（同意UI、Privacy Policy、公開route限定page view、検索イベント、CSP/通信検証）
-- [ ] 広告配置
+- [ ] AdSense Auto Ads（対象route限定、Privacy Policy・同意要件、Report-Only・広告通信検証）
 
 ### フェーズ4: 管理画面
 - [ ] Cloudflare Access JWT検証・`admin_users`認可（D3/ADR 012）+ CSRF
@@ -315,6 +315,7 @@ meigen-fly/
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
 | `GA_MEASUREMENT_ID` | 同意後の公開フルページ限定GA4測定ID。未設定時はAnalyticsを完全無効化 |
+| `ADSENSE_PUBLISHER_ID` | 一般閲覧ページ限定Auto Ads publisher ID。未設定時はAdSenseを完全無効化 |
 | `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
 | `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
@@ -324,6 +325,7 @@ meigen-fly/
 
 - [ ] 公開ページ2回目アクセスで `cf-cache-status: HIT`
 - [ ] `/search`・`/admin`とその全配下・`/login` が `private, no-store`
+- [ ] 管理・認証・検索は厳格CSP、一般閲覧ページは最小Enforce + resource Report-Onlyとなり、Auto Adsは対象閲覧routeだけに出る
 - [ ] `/admin/*`でAccess JWTの署名・issuer・audience・期限と`admin_users`のrole・有効状態を検証し、直アクセス・偽造JWTを403にできる
 - [ ] 2文字検索（例「人生」）が正しくヒット
 - [ ] Admin更新後に該当URLがパージされ最新反映

@@ -271,6 +271,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
 | `GA_MEASUREMENT_ID` | 公開フルページ限定GA4の測定ID。未設定時はAnalyticsコード・追加CSP・Google通信を全て無効化 |
+| `ADSENSE_PUBLISHER_ID` | 一般閲覧ページ限定Auto Adsのpublisher ID。未設定時はAdSenseコード・広告通信を無効化 |
 | `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
 | `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
@@ -281,7 +282,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - Admin: Cloudflare Access + 外部IdP + Access independent MFA + FastAPIでのAccess JWT検証 + `admin_users`認可。接続元IP固定は前提にしない
 - CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
 - Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
-- CSPはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしを基本とする。GA4は同意後の公開フルページだけに非広告用originを追加し、管理・認証・API・HTMX断片・error responseは同一オリジンCSPを維持する。AdSenseは初期OFFとする（[ADR 016](016-csp-htmx-rules.md)）
+- CSPはroute別とする。管理・認証・検索・HTML errorはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしの厳格CSPをEnforceする。一般閲覧ページは非resource制約だけEnforceし、resourceはReport-OnlyとしてCloudflare共有HTMLキャッシュとAuto Adsを優先する（[ADR 016](016-csp-htmx-rules.md)）
 - HTMXは`allowEval=false`、`allowScriptTags=false`とし、`hx-on`、イベントフィルタ、`js:`/`javascript:`値、断片内scriptを禁止する。`hx-csp`は初期採用しない（[ADR 016](016-csp-htmx-rules.md)）
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
@@ -312,6 +313,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] `/quotes/q1342`、`/quotes`、`/quotes/page/2`、`/quotes/latest`、`/quotes/latest/page/2` に `Cache-Control: public, s-maxage=600, max-age=60` が付いている
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
 - [ ] `/admin`とその全配下、および`/login`に `Cache-Control: private, no-store` が付き、CloudflareでもBypassされる
+- [ ] 管理・認証・検索は厳格CSP、一般閲覧ページは最小Enforce + resource Report-Onlyとなり、AdSense用resource許可が管理・検索へ波及しない
+- [ ] `ADSENSE_PUBLISHER_ID`設定時も対象閲覧ページがCloudflare HITとなり、検索・管理・API・HTMX断片にはAuto Ads codeが出ない
 - [ ] `POST /api/likes/q1342` が `private, no-store` かつCloudflare Bypassで、GETは405を返す
 - [ ] `/random` が現行どおり20件のランダム一覧を返し、`private, no-store`かつCloudflare Bypassで、連続取得時に結果がキャッシュ固定化しない
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）

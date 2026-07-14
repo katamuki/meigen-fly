@@ -13,7 +13,7 @@
 - SQLiteは東京`nrt`の単一Fly Machineに接続したFly Volume `/data`で運用する。
 - LiteFS、Litestream、複数Machineによる自動フェイルオーバーは初期導入しない。
 - 毎日1回、`sqlite3.Connection.backup()`で一貫した一時DBを作り、`PRAGMA integrity_check`後にCloudflare R2へ保存する。稼働DBを単純に`cp`しない。
-- R2 Lifecycleで30日後に自動削除する。Bucket LockとFly Volume snapshotの追加設定は必須としない。
+- R2の`daily/`配下へUTC日時を含む一意なオブジェクト名で保存し、同一キーを上書きしない。Lifecycleで各オブジェクトを30日後に自動削除する。Bucket LockとFly Volume snapshotの追加設定は必須としない。
 - ジョブ失敗を通知し、最新成功時刻を確認できるログを残す。専用の鮮度監視サービスは作らない。
 - 大きなデータ移行または破壊的migrationの前にはオンデマンドバックアップを取得する。通常の小さなmigrationでは任意とする。
 

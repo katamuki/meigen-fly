@@ -147,7 +147,7 @@ async def cache_headers(request, call_next):
 - 毎日03:00 JSTに、Uvicorn workerとは独立した専用 `supercronic` プロセスから単一ジョブを実行する。
 - 一時DBを`integrity_check`後にCloudflare R2へアップロードする。
 - 失敗時は通知し、最新成功時刻をログで確認できるようにする。
-- R2の`daily/` prefixに保存し、Lifecycleで30日後に削除する。Bucket Lockと追加snapshotは初期必須としない。
+- R2の`daily/` prefixへUTC日時を含む一意な名前で上書きせず保存し、Lifecycleで30日後に削除する。Bucket Lockと追加snapshotは初期必須としない。
 - 正常に日次ジョブが動いている場合のRPOは約24時間、RTOは30分〜数時間を暫定目標とする。ジョブ失敗・未検知時はRPOを超過する。
 - 大きなデータ移行または破壊的migration前にはオンデマンドバックアップを取得する。
 
@@ -291,13 +291,12 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
 - [ ] `/admin`とその全配下、および`/login`に `Cache-Control: private, no-store` が付き、CloudflareでもBypassされる
 - [ ] 共通CSPと基本セキュリティヘッダーが付き、閲覧・検索・管理・HTMXの主要導線が動作する
-- [ ] `ADSENSE_PUBLISHER_ID`設定時も対象閲覧ページがCloudflare HITとなり、検索・管理・API・HTMX断片にはAuto Ads codeが出ない
 - [ ] `POST /api/likes/q1342` が `private, no-store` かつCloudflare Bypassで、GETは405を返す
 - [ ] `/random` が現行どおり20件のランダム一覧を返し、`private, no-store`かつCloudflare Bypassで、連続取得時に結果がキャッシュ固定化しない
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている
-- [ ] Uvicorn 1/2 workerのどちらでも各定期ジョブが1回だけ実行され、supercronic停止・timeout・失敗を検知できる
+- [ ] 初期構成のUvicorn 1 workerで各定期ジョブが1回だけ実行され、supercronic停止・timeout・失敗を検知できる。2 workerへ変更する場合は同じ回帰確認を行う
 - [ ] 日次バックアップがR2へ保存され、失敗時に通知される
 - [ ] リリース前または大きな変更後にR2バックアップから復元し、`integrity_check`、Alembic revision、主要件数を確認できる
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する

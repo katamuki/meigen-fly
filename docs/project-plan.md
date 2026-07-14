@@ -133,10 +133,12 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 | マテビュー/集計ビュー | SQLiteでは通常テーブル + 定期再計算バッチ、またはリアルタイムSQLへ置換。小規模データのためフェーズ1で削除可能性を判定 |
 | RPC（`get_quote_rankings` 等） | FastAPIサービス層のSQL関数に移植 |
 
-### 対象テーブル一覧（移行必須）
-20テーブル:
+### 対象テーブル一覧
+アプリデータとして移行する19テーブル:
 
-`authors` / `sources` / `source_types` / `source_type_assignments` / `characters` / `quotes` / `categories` / `professions` / `author_professions` / `countries` / `author_country` / `quote_categories` / `quote_likes` / `legacy_votes` / `ranking_parameters` / `quote_ranking_scores` / `author_rankings` / `category_rankings` / `ranking_refresh_logs` / `admin_users`
+`authors` / `sources` / `source_types` / `source_type_assignments` / `characters` / `quotes` / `categories` / `professions` / `author_professions` / `countries` / `author_country` / `quote_categories` / `quote_likes` / `legacy_votes` / `ranking_parameters` / `quote_ranking_scores` / `author_rankings` / `category_rankings` / `ranking_refresh_logs`
+
+既存の`admin_users`は初期認証に利用せず、移行必須対象から除外する。将来、複数管理者の権限差が必要になった場合に、ADR 012に従って新しい認可モデルとして再設計する。
 
 ### 集計ビュー・マテビュー・RPC移植対象
 
@@ -328,7 +330,7 @@ meigen-fly/
 - [ ] 2文字検索（例「人生」）が正しくヒット
 - [ ] Admin更新後に該当URLがパージされ最新反映
 - [ ] SQLiteがWALで稼働し、`/healthz`がno-store/Bypassで200を返し、外形監視とデプロイ後smoke testがorigin停止を検知する
-- [ ] Uvicorn 1/2 workerのどちらでも各定期ジョブが1回だけ動き、supercronic停止・timeout・失敗を検知できる
+- [ ] 初期構成のUvicorn 1 workerで各定期ジョブが1回だけ動き、supercronic停止・timeout・失敗を検知できる。2 workerへ変更する場合は同じ回帰確認を行う
 - [ ] 名言詳細・一覧が10分TTLでHITし、いいねPOSTがno-store/Bypass、GETが405になる
 - [ ] 日次バックアップがR2に保存され、失敗を通知できる
 - [ ] リリース前または大きな変更後にR2バックアップを復元し、`integrity_check`・Alembic revision・主要件数が一致する

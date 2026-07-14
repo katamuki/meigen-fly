@@ -16,8 +16,8 @@
 - Fly Appから公開IPv4・IPv6を解放し、`fly.toml`に公開`http_service`または公開`services`を定義しない。Uvicornは`127.0.0.1:8000`だけにbindし、インターネット、Fly Proxy、6PNから直接受けない。
 - 本番TunnelのPublished application routeは`www.meigensyu.com`だけに限定し、wildcardを使わない。未一致routeは404にする。apex `meigensyu.com`にはoriginless redirect用のproxied Aレコード`192.0.2.0`を設定し、Cloudflare Redirect Ruleでpathとqueryを維持した301または308を`www.meigensyu.com`へ返す。段階リリースの`new.meigensyu.com`は検証環境に明示した一時routeとして扱い、`www`切替後の正常性を確認してから削除する。
 - Tunnelで`Host`を一律上書きせず、FastAPIでも環境ごとの許可Hostを完全一致で限定する。本番は`www.meigensyu.com`だけを許可する。`*.fly.dev`や未知のHostをcanonical hostへリダイレクトせず、400または421で拒否する。
-- 検証環境では許可Hostと`PUBLIC_ORIGIN`を`new.meigensyu.com`に設定する。管理画面も検証するため、`new.meigensyu.com/admin`とその全配下に本番と同じdeny-by-default・管理者完全一致・independent MFA要件の一時Access applicationを作り、そのapplication固有のaudienceを検証環境の`CF_ACCESS_AUD`に設定する。本番昇格時は短いmaintenance windowで、許可Hostと`PUBLIC_ORIGIN`を`www.meigensyu.com`へ、`CF_ACCESS_AUD`を本番Access applicationのaudienceへ変更してデプロイしてから`www`をTunnelへ切り替える。公開ページと管理画面の正常性を確認した後、一時Tunnel routeとAccess applicationを削除する。
-- Tunnelは管理者認証の代替にしない。`/admin`とその全配下ではADR 012のCloudflare Access JWT検証と`admin_users`認可を維持する。
+- 検証環境を設ける場合は、環境全体をCloudflare Accessで管理者本人だけに制限し、許可Hostと`PUBLIC_ORIGIN`を`new.meigensyu.com`に設定する。本番昇格時に`www.meigensyu.com`へ変更し、公開ページと管理画面の代表的な導線を確認する。一時環境へ本番と同一の詳細ポリシーを再現することは必須としない。
+- Tunnelは管理者認証の代替にしない。`/admin`とその全配下ではADR 012のCloudflare Accessとアプリ側の最小限のJWT検証を維持する。
 - `CF-Connecting-IP`はTunnel経由のHTTPリクエストでのみ信頼する。少なくとも匿名いいねPOSTでは、ヘッダーが1個だけで、値がカンマを含まず、正しいIPv4またはIPv6であることを検証する。欠落、重複、不正値を拒否し、`X-Forwarded-For`やsocket peerへfallbackしない。IPはレート制限、`ip_hash`、不正検知の補助信号に限定し、認証identityに使わない。
 - Authenticated Origin Pulls、Cloudflare IPレンジallowlist、独自secret headerは併用しない。Tunnelでは公開TLSオリジンが存在せず、これらを重ねても初期構成の防御効果に対して運用負担が大きいためである。
 

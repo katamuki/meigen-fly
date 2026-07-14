@@ -6,13 +6,13 @@
 
 ## コンテキスト
 
-PostgreSQLから約20テーブルをSQLiteへ移植し、通常テーブルに加えてFTS5仮想テーブル、トリガー、ビュー、bigram派生データを管理する。スキーマ変更履歴、適用済みrevision、データ変換を再現可能にする必要がある。
+PostgreSQLから約20テーブルをSQLiteへ移植する。スキーマ変更履歴、適用済みrevision、データ変換を再現可能にする必要がある。
 
 ## 決定
 
 - アプリのDBアクセスは **SQLAlchemy Core** を基本とし、スキーマmigrationは **Alembic** で管理する。全面的なORM採用は必須としない。
 - Alembicのautogenerateは通常テーブル変更の**下書き**に限定し、生成結果を必ずレビューする。
-- FTS5仮想テーブル、トリガー、ビュー、`CHECK`制約、bigram再生成、データ変換は手書きrevisionとして明示する。
+- トリガー、ビュー、`CHECK`制約、データ変換は必要な場合だけ手書きrevisionとして明示する。
 - SQLiteでテーブル再作成が必要な変更には `batch_alter_table()` を使い、`render_as_batch=True` を設定する。
 - 主キー、外部キー、UNIQUE、CHECK、インデックスには一貫した命名規約を設定する。
 - downgradeは安全に戻せる変更に限って実装する。破壊的変更の本番復旧は、事前バックアップと対応するアプリ版への切り戻しを基本とする。

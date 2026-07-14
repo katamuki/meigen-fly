@@ -22,7 +22,7 @@
 - **CDN**: Cloudflare（無料プランで十分）
 - **ホスティング**: Fly.io（東京リージョン `nrt` 推奨）
 - **公開ホスト**: `https://www.meigensyu.com/`（Fly.ioの公開IP/serviceは持たない）
-- **バックアップ**: 毎日03:00 JSTに整合したSQLiteバックアップをR2へ保存。Fly Volume snapshotは二次復旧手段
+- **バックアップ**: 毎日03:00 JSTに整合したSQLiteバックアップをR2へ保存し、30日Lifecycleを設定
 
 ## 2. キャッシュ戦略の基本方針
 
@@ -117,12 +117,12 @@ async def cache_headers(request, call_next):
 
 - `GET /search?q=...` のパターン
 - `no-store` にする。もしくは、頻出クエリだけアプリ内 TTLCache で軽く受ける
-- SQLite の FTS5 で全文検索（`quotes_fts` 仮想テーブル）
+- SQLiteの`LIKE`による部分一致検索。性能上必要になった場合だけFTS5を再検討する
 
 ### 4.5 Admin ページ
 
-- `/admin`とその全配下はCloudflare Access + 外部IdP + Access independent MFAで保護し、管理者emailを完全一致で許可する。接続元IP固定は前提にしない
-- FastAPIでも`Cf-Access-Jwt-Assertion`の署名・`iss`・`aud`・`exp`・`nbf`・`iat`・`type`・`sub`・emailを検証し、`admin_users`のrole・有効状態で認可する。Basic認証とアプリ独自パスワードは使わない（[ADR 012](012-admin-auth-cloudflare-access.md)）
+- `/admin`とその全配下はCloudflare Access + 外部IdPで保護し、管理者emailを完全一致で許可する。MFAはIdP側で有効化する
+- FastAPIでもAccess JWTの署名・`iss`・`aud`・有効期限・emailを検証する。単一管理者の初期段階ではアプリ内role・identity表を作らない（[ADR 012](012-admin-auth-cloudflare-access.md)）
 - Access session cookieを伴うためキャッシュ不可。`/admin`とその全配下、および`/login`は`private, no-store`とする
 - 状態変更にはCSRF token、環境ごとの`PUBLIC_ORIGIN`との完全一致`Origin`、Fetch Metadata検証を必須とする。本番の`PUBLIC_ORIGIN`は`https://www.meigensyu.com`に固定する
 - 管理画面のJWT検証とは別に、サイト全体のCloudflare迂回をCloudflare TunnelとFlyの公開IP/service削除で防ぐ（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
@@ -131,13 +131,11 @@ async def cache_headers(request, call_next):
 
 名言詳細と一覧（`/quotes*`、`/quotes/latest*`）のSSR HTMLへいいね数を含め、`s-maxage=600, max-age=60` でキャッシュする。毎PVで件数を取得するGET/HTMX断片APIは作らず、いいねごとのCloudflareパージも行わない。
 
-登録は公開HTMLと分離した `POST /api/likes/{quote_id}` で受け、`private, no-store` とCloudflare Bypassを必須にする。成功応答で最新件数を返し、押した本人のDOMだけ即時更新する。TTL内の再読込で一時的に古い件数へ戻ることは許容し、「押した」状態はlocalStorageから復元する。不正対策、IP hashのライフサイクル、レート制限、Turnstile導入境界を含む詳細は [`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md) を正本とする。
+登録は公開HTMLと分離した `POST /api/likes/{quote_id}` で受け、`private, no-store` とCloudflare Bypassを必須にする。成功応答で最新件数を返し、押した本人のDOMだけ即時更新する。TTL内の再読込で一時的に古い件数へ戻ることは許容する。重複抑止は`client_uuid`の一意制約と単純な短時間IP制限に留め、IP hashは保存しない（[`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md)）。
 
 ## 5. キャッシュパージ
 
-Admin更新時は個別詳細・既知のOG URL・`/sitemap.xml`をURLパージし、一覧・全ページング・関連entity・トップ・ランキングは`Cache-Tag`でパージする。タグは変更可能なslugではなく、不変の数値IDを使う`quote-{id}`、`author-{id}`、`category-{id}`等の個体タグと、`quotes-list`、`home`、`ranking`等の集合・派生タグに統一する。
-
-更新entityごとの対象、変更前後の関連ID取得、ランキング再計算後の波及、3秒集約、SQLite outbox、最大5回の再送、sitemap、101/501件を境界とする一括登録、TTL fallbackの詳細は [`014-cache-purge-boundaries.md`](014-cache-purge-boundaries.md) を唯一の正本とする。通常処理ではPrefixパージとPurge Everythingを使わず、緊急時だけ管理CLIから実行する。ADR 014は本節の旧タグ例・旧パージ対象表を置き換える。
+管理更新後に少数の関連URLまたは集合タグを同期パージする。失敗時は管理者へ表示してログへ残し、TTLによる自然失効を待つ。outbox、自動retry、非同期flusherは作らない。大量更新時は集合タグ、手動Purge Everything、またはTTLへ委任する。詳細は [`014-cache-purge-boundaries.md`](014-cache-purge-boundaries.md) を正本とする。
 
 ## 6. SQLite 構成
 
@@ -147,13 +145,13 @@ Admin更新時は個別詳細・既知のOG URL・`/sitemap.xml`をURLパージ�
 
 - 稼働中のSQLiteファイルを単純に `cp` しない。Python `sqlite3.Connection.backup()`（SQLite Online Backup API）で一貫した一時DBを生成する。
 - 毎日03:00 JSTに、Uvicorn workerとは独立した専用 `supercronic` プロセスから単一ジョブを実行する。
-- 一時DBの整合性を検証し、圧縮済み成果物とSHA-256 sidecarをUTCタイムスタンプ付きの名前でCloudflare R2へアップロードする。
-- 失敗時はリトライ・通知し、03:30 JSTまでに当日分がない場合、または最新成功から25時間を超えた場合にアラートにする。
-- 専用R2バケットの `daily/` prefixに30日のBucket LockとLifecycleを設定する。Fly Volumeの日次snapshotは14日保持する二次復旧手段とする。
+- 一時DBを`integrity_check`後にCloudflare R2へアップロードする。
+- 失敗時は通知し、最新成功時刻をログで確認できるようにする。
+- R2の`daily/` prefixに保存し、Lifecycleで30日後に削除する。Bucket Lockと追加snapshotは初期必須としない。
 - 正常に日次ジョブが動いている場合のRPOは約24時間、RTOは30分〜数時間を暫定目標とする。ジョブ失敗・未検知時はRPOを超過する。
-- Admin一括更新、データ移行、Alembic migration前にはオンデマンドバックアップを取得する。
+- 大きなデータ移行または破壊的migration前にはオンデマンドバックアップを取得する。
 
-復旧時はR2のバックアップを別パスへ取得し、SHA-256、`integrity_check`、Alembic revision、主要件数を検証してからDBを切り替える。月1回、実際の復元演習を行う。詳細は [`003-sqlite-daily-backup.md`](003-sqlite-daily-backup.md) を参照。
+復旧時はR2のバックアップを別パスへ取得し、`integrity_check`、Alembic revision、主要件数を検証してからDBを切り替える。復元確認は初回リリース前、大きな変更後、または四半期を目安に行う。詳細は [`003-sqlite-daily-backup.md`](003-sqlite-daily-backup.md) を参照。
 
 ### 6.2 SQLite 設定
 
@@ -165,26 +163,9 @@ PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 ```
 
-### 6.3 全文検索
+### 6.3 検索
 
-**方式B（FTS5 + アプリ側bigram）で確定**（決定記録002）。`trigram` は2文字語がヒットしないため**不採用**。`unicode61` の FTS5 テーブルへ、アプリ側で2文字ずつ分割（bigram）した検索用テキストを格納する。
-
-```sql
--- 検索用の派生テキスト（bigram化済み）を格納する列を FTS5 で索引化
-CREATE VIRTUAL TABLE quotes_fts USING fts5(
-    text_bigram,        -- 例: "人生は" → "人生 生は"（アプリ側で生成して INSERT）
-    author_bigram,
-    tokenize='unicode61'
-);
-```
-
-```python
-def bigrams(s: str) -> str:
-    s = s.replace(" ", "")
-    return " ".join(s[i:i+2] for i in range(len(s) - 1)) if len(s) >= 2 else s
-```
-
-検索時もクエリを `bigrams()` で分割して `MATCH` する。ランキングは FTS5 の `bm25()` ＋補助ソートで現状の重み付けを再現する（決定記録002）。1文字検索のみ `LIKE '%x%'` で補助。
+初期リリースは単純な`LIKE`部分一致を使用する（決定記録002）。約3,000行では追加インデックスなしでも十分なため、FTS5、bigram派生列、生成スクリプトを持たない。入力を正規化し、bind parameter、結果件数上限、必要最小限の順位付けを使用する。性能または検索品質の問題が実測された場合だけFTS5等を再評価する。
 
 ## 7. Fly.io 構成
 
@@ -211,7 +192,6 @@ primary_region = "nrt"
 [mounts]
   source = "data"
   destination = "/data"
-  snapshot_retention = 14
 ```
 
 - SQLite は `/data` にマウントされたボリュームに置く
@@ -224,10 +204,10 @@ primary_region = "nrt"
 - `python:3.12-slim` ベース
 - 初期は `uvicorn --workers 1 --host 127.0.0.1 --port 8000`
 - 固定バージョンの`cloudflared`を同梱し、自動更新は使わない
-- entrypointがmaintenance lockを取得してmigrationを完了した後、PID 1として `supervisord` をexecし、Uvicorn、`cloudflared`、supercronicを監督・再起動する
+- PID 1の最小限のプロセス監督でUvicorn、`cloudflared`、supercronicを起動・再起動する。アプリ固有の状態管理は持たせない
 - `/healthz`は`private, no-store`とCloudflare Bypassを設定し、外形監視とデプロイ後smoke testに使う
 
-FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計を含む全定期ジョブはsupercronicからCLIとして実行し、共通maintenance lock、ジョブ別 `flock`、timeout、非ゼロ終了、失敗通知を必須にする。負荷観測後に必要な場合だけHTTP workerを2へ増やし、定期ジョブ数は増やさない（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
+FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計はsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了、既存経路での失敗通知を使う。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
 
 ## 8. Cloudflare 設定
 
@@ -245,19 +225,18 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - **WAF**:
   - Bot Fight Mode ON
   - Rate limiting: Freeの1ルールは`/api/likes/*`へ優先し、IP単位10回/10秒・10秒blockの粗いburst shieldとする。`/search`用Cloudflare ruleは初期配置せず、アプリ側の30回/10秒・120回/60秒を正本とする。検索は1文字から500ms debounceで実行する（[ADR 006](006-like-count-cache-strategy.md)、[ADR 015](015-search-rate-limits.md)）
-- **Admin access**: 接続元IPは固定できないため、IP allowlistは使わない。Cloudflare Access + 外部IdP + Access independent MFAとFastAPIでのAccess JWT検証を使用する（ADR 012）
+- **Admin access**: Cloudflare Access + 外部IdP側MFAとFastAPIでの最小限のAccess JWT検証を使用する（ADR 012）
 - **Origin protection（D14・確定）**: Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除する。FastAPIでexact Hostを検証し、AOP・CF IP allowlist・独自secret headerは併用しない（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 
 ## 9. デプロイ・運用
 
 - CI/CD: GitHub Actions → `flyctl deploy`
-- マイグレーション: SQLAlchemy Core + `alembic` で管理（ADR 004）。autogenerateは下書きに限定し、FTS5・トリガー・ビュー・データ変換は手書きrevisionにする
+- マイグレーション: SQLAlchemy Core + `alembic` で管理（ADR 004）。autogenerateは下書きに限定し、必要なトリガー・ビュー・データ変換は手書きrevisionにする
 - SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineでUvicorn worker起動前に一度だけ実行する
-- migration時は「Uvicorn/supercronicをプロセスグループ停止 → DBジョブ共有lock解放待ち → 排他maintenance lock取得 → オンデマンドバックアップ → `integrity_check` → R2アップロード成功確認 → `alembic upgrade head` → lock解放 → supervisord起動・確認」の順にする
+- migration時は短いmaintenance windowを設け、破壊的変更では事前バックアップを取得して`alembic upgrade head`を実行し、主要ページを確認する
 - ログ: Fly.io の標準ログ + Cloudflare Analytics
 - 監視: Fly.io メトリクス + UptimeRobot などで外形監視
-- バックアップ: SQLite Online Backup APIによる日次R2保存。バックアップ失敗と最新成功時刻を監視し、月1回復元演習を行う
-- Fly Volume snapshot: 14日保持する二次復旧手段。主要バックアップはR2とする
+- バックアップ: SQLite Online Backup APIによる日次R2保存。失敗を通知し、復元確認はリリース前・大きな変更後・四半期を目安に行う
 
 ## 10. 環境変数
 
@@ -270,19 +249,17 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
-| `GA_MEASUREMENT_ID` | 公開フルページ限定GA4の測定ID。未設定時はAnalyticsコード・追加CSP・Google通信を全て無効化 |
-| `ADSENSE_PUBLISHER_ID` | 一般閲覧ページ限定Auto Adsのpublisher ID。未設定時はAdSenseコード・広告通信を無効化 |
-| `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
-| `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
+| `GA_MEASUREMENT_ID` | 本体完成後、GA4を導入する場合だけ設定。未設定時はAnalyticsコードを出さない |
+| `ADSENSE_PUBLISHER_ID` | 本体完成後、AdSenseを導入する場合だけ設定。未設定時は広告コードを出さない |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
 ## 11. セキュリティ
 
-- Admin: Cloudflare Access + 外部IdP + Access independent MFA + FastAPIでのAccess JWT検証 + `admin_users`認可。接続元IP固定は前提にしない
+- Admin: Cloudflare Access + 外部IdP側MFA + FastAPIでの最小限のAccess JWT検証。初期は単一管理者を想定する
 - CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
 - Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
-- CSPはroute別とする。管理・認証・検索・HTML errorはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしの厳格CSPをEnforceする。一般閲覧ページは非resource制約だけEnforceし、resourceはReport-OnlyとしてCloudflare共有HTMLキャッシュとAuto Adsを優先する（[ADR 016](016-csp-htmx-rules.md)）
+- 全HTMLへ現実的な共通CSPと基本セキュリティヘッダーを適用する。HTMXのeval/script実行を無効化し、独自CSP report endpointは作らない。GA4/AdSenseは本体完成後の任意機能とする（[ADR 016](016-csp-htmx-rules.md)）
 - HTMXは`allowEval=false`、`allowScriptTags=false`とし、`hx-on`、イベントフィルタ、`js:`/`javascript:`値、断片内scriptを禁止する。`hx-csp`は初期採用しない（[ADR 016](016-csp-htmx-rules.md)）
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
@@ -313,7 +290,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] `/quotes/q1342`、`/quotes`、`/quotes/page/2`、`/quotes/latest`、`/quotes/latest/page/2` に `Cache-Control: public, s-maxage=600, max-age=60` が付いている
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
 - [ ] `/admin`とその全配下、および`/login`に `Cache-Control: private, no-store` が付き、CloudflareでもBypassされる
-- [ ] 管理・認証・検索は厳格CSP、一般閲覧ページは最小Enforce + resource Report-Onlyとなり、AdSense用resource許可が管理・検索へ波及しない
+- [ ] 共通CSPと基本セキュリティヘッダーが付き、閲覧・検索・管理・HTMXの主要導線が動作する
 - [ ] `ADSENSE_PUBLISHER_ID`設定時も対象閲覧ページがCloudflare HITとなり、検索・管理・API・HTMX断片にはAuto Ads codeが出ない
 - [ ] `POST /api/likes/q1342` が `private, no-store` かつCloudflare Bypassで、GETは405を返す
 - [ ] `/random` が現行どおり20件のランダム一覧を返し、`private, no-store`かつCloudflare Bypassで、連続取得時に結果がキャッシュ固定化しない
@@ -321,8 +298,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている
 - [ ] Uvicorn 1/2 workerのどちらでも各定期ジョブが1回だけ実行され、supercronic停止・timeout・失敗を検知できる
-- [ ] 毎日03:30 JSTまでに当日分がR2にあり、最新成功から25時間を超えた場合または失敗時に通知される
-- [ ] R2バックアップから別DBへの復元、SHA-256、`integrity_check`、Alembic revision、主要件数の検証に成功する
+- [ ] 日次バックアップがR2へ保存され、失敗時に通知される
+- [ ] リリース前または大きな変更後にR2バックアップから復元し、`integrity_check`、Alembic revision、主要件数を確認できる
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
 - [ ] `/healthz` が`private, no-store`かつCloudflare Bypassで200を返し、外形監視とデプロイ後smoke testがorigin停止を検知する
 - [ ] OG画像 `/api/og?type=quote&id=...` がエッジキャッシュされる

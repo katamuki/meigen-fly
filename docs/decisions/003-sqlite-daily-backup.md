@@ -1,73 +1,51 @@
-# アーキテクチャ決定記録: SQLite の永続化・日次バックアップ・復旧
+# アーキテクチャ決定記録: SQLiteの永続化・日次バックアップ・復旧
 
 ## ステータス
 
-**確定: 単一 Fly Machine + Fly Volume + 日次オンラインバックアップを採用**（2026-07-13決定）
+**確定: 単一Fly Machine + Fly Volume + 日次R2バックアップを採用**（2026-07-14簡略化）
 
 ## コンテキスト
 
-初期リリースは東京リージョンの単一 Machine で運用し、公開ページの読み取り負荷は Cloudflare のエッジキャッシュで吸収する。データ規模は約3,000行で、書き込みは Admin 操作と匿名いいねに限られる。
-
-継続レプリケーションや自動フェイルオーバーは初期要件ではない。正常に日次バックアップが完了している場合に、最大約24時間分の更新を失う可能性と手動復旧を許容し、構成を単純に保つ。
+データは約3,000行で、書き込みは管理操作と匿名いいねに限られる。自動フェイルオーバーは初期要件とせず、正常時に最大約24時間分の更新を失う可能性と手動復旧を許容する。
 
 ## 決定
 
-- SQLite は東京 `nrt` の **単一 Fly Machine** に接続した **Fly Volume `/data`** で運用する。
-- **LiteFS と Litestream は初期構成では採用しない**。継続レプリケーションと複数 Machine 間の自動フェイルオーバーは行わない。
-- 稼働中の `/data/app.db` を単純に `cp` しない。WAL モードでも一貫したスナップショットを作れる **Python `sqlite3.Connection.backup()`（SQLite Online Backup API）** を使う。
-- 毎日 **03:00 JST** に同一Machine内の専用 `supercronic` プロセスから単一ジョブを実行し、Uvicorn worker 内のスケジューラでは動かさない。プロセス監督と多重起動防止は [`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md) に従う。
-- バックアップは一時DBへ出力し、`PRAGMA integrity_check`後に圧縮する。圧縮済み成果物のSHA-256を作り、成果物と `.sha256` sidecarを Cloudflare R2 へアップロードする。R2オブジェクト名にはUTCタイムスタンプを含め、上書きしない。
-- R2へのアップロード成功後に一時ファイルを削除する。失敗時はリトライし、失敗通知を送る。
-- R2上の最新成功バックアップ時刻を監視し、**03:30 JSTまでに当日分がない場合**、または最新成功から25時間を超えた場合にアラートにする。ジョブ失敗時にはRPOが24時間を超え得ることを運用上の制約として受け入れる。
-- バックアップは専用R2バケットの `daily/` prefixへ保存する。`daily/` に30日のBucket Lockを設定して上書き・削除を防ぎ、同prefixのLifecycleで30日経過後に失効させる。これらはR2側で管理し、アプリから削除しない。
-- 長期R2資格情報はバックアップ専用バケットだけに読み書きを許可する。prefix単位に制限する必要が生じた場合は、短命なR2 temporary credentialsを使用する。
-- Fly Volume の日次snapshotは**14日保持**し、R2とは独立した**二次復旧手段**として使う。snapshotだけを主要バックアップにはしない。
-- Admin一括更新、データ移行、Alembic migrationの直前には、定時処理とは別にオンデマンドバックアップを取得する。
+- SQLiteは東京`nrt`の単一Fly Machineに接続したFly Volume `/data`で運用する。
+- LiteFS、Litestream、複数Machineによる自動フェイルオーバーは初期導入しない。
+- 毎日1回、`sqlite3.Connection.backup()`で一貫した一時DBを作り、`PRAGMA integrity_check`後にCloudflare R2へ保存する。稼働DBを単純に`cp`しない。
+- R2 Lifecycleで30日後に自動削除する。Bucket LockとFly Volume snapshotの追加設定は必須としない。
+- ジョブ失敗を通知し、最新成功時刻を確認できるログを残す。専用の鮮度監視サービスは作らない。
+- 大きなデータ移行または破壊的migrationの前にはオンデマンドバックアップを取得する。通常の小さなmigrationでは任意とする。
 
 ## migration時の手順
 
-SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineで、Uvicorn worker起動前に一度だけ実行する。
+1. 書き込みを停止するか、短いmaintenance windowを設ける。
+2. 必要に応じてオンデマンドバックアップを取得する。
+3. `alembic upgrade head`を実行する。
+4. `/healthz`と主要ページを確認して書き込みを再開する。
 
-1. supervisordでUvicornとsupercronicをプロセスグループ単位に停止し、子プロセスの終了を待つ。
-2. 全DBジョブ共通lockの排他lockを取得する。実行中ジョブが共有lockを解放するまで待ち、新規ジョブを開始させない。
-3. 排他lockを保持したまま、ネストしたlockを取らないmaintenance modeでOnline Backup APIによるmigration直前バックアップを作成する。
-4. `PRAGMA integrity_check`後に圧縮し、圧縮済み成果物のSHA-256を作成する。
-5. R2へのアップロード成功を確認する。
-6. `alembic upgrade head` を実行する。
-7. 排他lockを解放してsupervisordを起動し、Uvicornとsupercronic、`/healthz`、主要ページを確認する。
-8. 書き込みを再開する。
-
-migration失敗時はsupervisordを起動せず、旧DBに対応するアプリ版へ戻してバックアップを復元するか、復元DBへ必要なrevisionを適用してから起動する。バックアップ取得からmigration完了まで全書き込みと定期ジョブを止め、復元時の更新欠損を防ぐ。
+失敗時は対応するアプリ版へ戻し、必要なら直前または日次バックアップから手動復元する。
 
 ## 復旧手順
 
-1. アプリと全書き込みを停止する。
-2. R2から復元対象と `.sha256` sidecarを別パスへダウンロードし、圧縮済み成果物のSHA-256を検証して展開する。
+1. アプリの書き込みを停止する。
+2. R2から対象バックアップを別パスへ取得する。
 3. `PRAGMA integrity_check`、Alembic revision、主要テーブル件数を確認する。
-4. 必要に応じて `alembic upgrade head` を適用する。
-5. 復旧環境に設定したいいね用秘密鍵のcurrent/previous世代IDを確認する。復元DBの`quote_likes`について、いいね作成から30日を超えた行、および鍵世代がcurrent/previousのどちらにもない行の`ip_hash`を`NULL`化する。この処理中もアプリを起動せず、公開書き込みを再開しない。
-6. 同じ条件に該当して`ip_hash IS NOT NULL`の行が**0件**であることをSQLで検証し、処理件数、実行時刻、許可したcurrent/previous世代IDだけを復旧記録へ残す。生IP、hash、`client_uuid`は記録しない。秘密鍵または世代IDを確定できない場合はfail closedとし、いいねPOSTを再開しない。
-7. 既存DBを直接上書きせず、上記gateを通過した検証済みDBへ切り替える。
-8. アプリを起動し、`/healthz`、検索、Admin、いいねを確認してから公開書き込みを再開する。
+4. 必要なrevisionを適用し、検証済みDBへ切り替える。
+5. `/healthz`、検索、管理画面、いいねを確認して再開する。
 
-Fly Volume snapshotを使う場合も、新しいVolumeへ復元し、同じIP hash削除gateを含む検証後にMachineへ付け替える。IP hashの30日保持、鍵rotation、復旧時の削除条件は [`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md) を正本とする。
+## 運用・検証
 
-## 運用・検収
+- バックアップ処理と失敗通知をリリース前に確認する。
+- 復元確認は初回リリース前、大きなスキーマ変更後、または四半期を目安に実施する。月次演習は必須としない。
+- 暫定目標は正常時RPO約24時間、RTO数時間以内とする。
 
-- 毎日03:30 JSTまでに当日分がR2に存在し、最新成功から25時間以内であることを監視する。
-- バックアップ失敗通知をテストする。
-- 月1回、R2バックアップを別DBへ実際に復元し、整合性・Alembic revision・主要件数を検証する。
-- 月次復元演習では、30日超およびcurrent/previousにない鍵世代の`quote_likes.ip_hash`が削除され、公開書き込み再開前の検証queryが0件となることも確認する。
-- 暫定目標は、正常時 **RPO 約24時間、RTO 30分〜数時間**とする。実復元演習の結果で見直す。
+## 再検討条件
 
-## 将来の再検討条件
-
-数分の停止も許容できない、自動フェイルオーバーが必要、または複数リージョンでローカルDB読み取りが必要になった場合は、LiteFSだけに限定せずマネージドPostgreSQLやlibSQL系も含めて再評価する。
+数分の停止も許容できない、自動フェイルオーバーが必要、または更新頻度が大きく増えた場合は、継続レプリケーションやマネージドDBを再評価する。
 
 ## 参考
 
 - [SQLite Online Backup API](https://sqlite.org/backup.html)
-- [Fly Volume snapshots](https://fly.io/docs/volumes/snapshots/)
-- [Fly Volumes overview](https://fly.io/docs/volumes/overview/)
-- [Cloudflare R2 Bucket Locks](https://developers.cloudflare.com/r2/buckets/bucket-locks/)
+- [Fly Volumes](https://fly.io/docs/volumes/overview/)
 - [Cloudflare R2 Object Lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)

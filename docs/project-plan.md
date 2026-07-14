@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-14（D3・D14を確定、公開ドメインを明記）
+> - 更新日: 2026-07-14（D9・D12・D15・D16を確定し、関連ADRへ同期）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -27,6 +27,9 @@
 | [`docs/decisions/011-sqlite-datetime-format.md`](decisions/011-sqlite-datetime-format.md) | SQLiteに保存する時点データの固定長UTC形式 |
 | [`docs/decisions/012-admin-auth-cloudflare-access.md`](decisions/012-admin-auth-cloudflare-access.md) | Cloudflare Access・外部IdP・MFAによる管理者認証 |
 | [`docs/decisions/013-cloudflare-tunnel-origin-protection.md`](decisions/013-cloudflare-tunnel-origin-protection.md) | Cloudflare Tunnel・Fly公開入口削除によるオリジン保護 |
+| [`docs/decisions/014-cache-purge-boundaries.md`](decisions/014-cache-purge-boundaries.md) | 更新entityごとのURL/タグパージ、3秒集約、再送、TTL委任の境界 |
+| [`docs/decisions/015-search-rate-limits.md`](decisions/015-search-rate-limits.md) | 検索UIの1文字検索・500ms debounce・アプリ側レート制限 |
+| [`docs/decisions/016-csp-htmx-rules.md`](decisions/016-csp-htmx-rules.md) | CSP許可先、インラインコード禁止、HTMX実装規約 |
 
 本計画書はこれらを束ねる上位文書。高レベルの確定事項は本計画書、各方式の実装・運用詳細は対応するADRを正本とし、矛盾を見つけた場合は双方を更新する。
 
@@ -56,7 +59,7 @@
 | 開発言語 | Python（3.12系想定） |
 | 公開オリジン | **`https://www.meigensyu.com/`**（既存ドメインを段階リリース後に切替） |
 
-> ⚠️ パージ運用等は **未決**。第7章「検討事項」で扱う。管理者認証を含む確定事項の詳細は対応するADRを正本とする。
+> キャッシュパージ、検索レート制限、CSP/HTMXを含む確定事項の詳細は対応するADRを正本とする。残る未決論点は第7章のD5・D8である。
 
 ## 3. スコープ（何を作り変えるか）
 
@@ -163,11 +166,10 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 
 - **キャッシュ**: パスごとに `Cache-Control` をMiddlewareで一元管理。`/search`、`/admin`とその全配下、`/login`は `private, no-store`。公開ページは `s-maxage` を長め・`max-age` を短めに。
   - ⚠️ **HTMLはCloudflareのデフォルトでキャッシュされない**（拡張子ベースでCSS/JS/画像のみ）。`Cache-Control` を返すだけでは不十分で、**公開HTMLパスに Cache Rules で「Eligible for cache（Cache Everything相当）」を明示**する必要がある。Cache Rules は **last matching rule wins（最後にマッチしたルールが勝つ）** のため、`/admin`・`/admin/*`・`/login`・`/search*`・`/random`・`/api/likes/*`・`/healthz` のBypassルールは、公開HTMLのEligibleルールより**後（下）**に配置する。詳細は決定記録001 §8。
-- **パージ**: Admin更新時に Cloudflare API で該当URL/タグ/プレフィックスをパージ。
+- **パージ**: Admin更新時に Cloudflare API で該当URL/タグをパージする。通常処理ではPrefix/Purge Everythingを使わない（D12/ADR 014）。
   - ✅ **Cloudflare Free でも利用可能な方式**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag / Prefix / Purge Everything すべて Free で使える**（旧記述「タグ/prefixはEnterprise限定」は誤りのため訂正）。
   - ⚠️ **Free のレート制限**: Tag/Prefix/Hostname/Purge Everything は **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高く **800 URLs/秒・1リクエスト最大100URL**（Free）。→ **一括登録など短時間の大量更新でタグ/prefixを多用すると 5/分 に当たる**点が実運用上の論点。
-  - **列挙が必要な派生URL（URLパージ採用時）**: 一覧の**全ページングURL**（`/quotes/page/N`, 著者/カテゴリ/出典の各ページ）、`/quotes/latest*`、`/ranking`、`/`、該当**OG画像** `/api/og?...`、`/sitemap.xml`。
-  - **方針（D12）**: **個別詳細ページ・OGは高上限のURLパージで即時反映**。一覧/著者/カテゴリ/ランキング等の広範な無効化は、`Cache-Tag` を付与して**タグパージ**（例 `quotes-list`, `author-123`）でまとめて落とす選択肢が Free でも取れる。ただし **5リクエスト/分**の制約に収まるようバッチ集約する。制約に収まらない範囲は**短めTTL（`s-maxage`）で自然失効に委任**。URLパージ／タグパージ／TTL委任の**使い分け境界**を実装前に確定する。
+  - **方針（D12/ADR 014）**: 個別詳細・既知のOG・`/sitemap.xml`はURLパージ、一覧・ページング・関連entity・トップ・ランキングは不変数値IDの個体タグと集合タグでパージする。要求はSQLite outboxへ入れて3秒集約し、失敗時は初回に加え最大5回再送する。一括更新は件数に応じてタグを絞り、501件以上の個別詳細は原則TTLへ委任する。ランキングは再計算transaction成功後だけ`ranking`と`home`をパージする。
   - **いいね数**: 名言詳細・一覧HTMLへ焼き込み、10分TTLで自然更新する。毎PVのGET APIといいねごとのパージは行わない（D9/ADR 006）。
 - **オリジン保護**: Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除する。Uvicornはloopbackだけにbindし、Tunnel routeとFastAPIの両方で`www.meigensyu.com`を完全一致で許可する。AOP、CF IP allowlist、独自secret headerは併用しない（D14/ADR 013）。管理画面ではD3/ADR 012のAccess JWT検証も維持する。
 - **IP取得**: Tunnel経由の公開書き込みでは `CF-Connecting-IP` を信頼する。匿名いいねPOSTでは単一かつ妥当なIPv4/IPv6だけを受け入れ、`X-Forwarded-For`等へfallbackしない。同一zoneのWorkerをoriginへのsubrequestに使う場合は再評価する。
@@ -201,7 +203,7 @@ meigen-fly/
 - **テンプレート**: `base.html` + 部分テンプレート。HTMX は検索・いいね・一覧の追加読込など**部分更新**に限定利用。
 - **サービス層**: 旧 Supabase RPC のロジック（ランキング取得・ランダム・出典集計・著者一覧）をSQLへ移植。JSONBはPython辞書で構築。
 
-## 7. 検討事項（未決論点＝プロジェクト開始前に決めること）
+## 7. 設計判断（確定事項と残る未決論点）
 
 | # | 論点 | 選択肢 | 推奨/メモ |
 |---|---|---|---|
@@ -213,22 +215,23 @@ meigen-fly/
 | D6 | **worker数・定期ジョブ実行** | Uvicorn + supercronic | ✅**確定（2026-07-13）**: 初期は1 worker。全定期処理はsupercronicから単一実行し、負荷観測後にHTTP workerだけ2へ増やす（ADR 005） |
 | D7 | **SQLiteバージョン/FTS5** | Python標準`sqlite3` | ✅**確定（2026-07-13）**: 標準`sqlite3`を採用し、最終Dockerイメージ上でFTS5・`unicode61`・WAL・Online Backup API・AlembicをCI検証する。失敗時の代替DBAPIは別途評価（ADR 007） |
 | D8 | **デザイン刷新の範囲** | 全面刷新 / 現行トーン踏襲 | 「デザイン一新」の具体要件を別途デザインガイドで定義 |
-| D9 | **いいね（公開書き込み）の設計・多重対策** | HTML焼き込み + 専用POST + best-effort重複抑制 | 🟡**表示方式は確定（2026-07-13）**: 詳細・一覧HTMLへ件数を含め10分TTL。毎PV GETなし。POSTはno-storeで本人だけ即時更新。保持期間・salt rotation・閾値・Turnstile条件は要決定（ADR 006） |
+| D9 | **いいね（公開書き込み）の設計・多重対策** | HTML焼き込み + 専用POST + best-effort重複抑制 | ✅**確定（2026-07-14）**: IP hashは稼働DBで30日、秘密鍵は30日ごとにrotationし24時間だけ旧世代も照合。アプリはIP 60回/10分・300回/24時間等の複合上限、Cloudflareは10回/10秒・10秒blockのburst shieldとする。共有NATではIP一致だけで拒否せず、定量条件到達時だけTurnstileを検討する（ADR 006） |
 | D10 | **URL互換性** | 現行URL・意味・canonicalを完全維持 | ✅**確定（2026-07-13）**: 静的301 **23本** + middlewareの `/quotations/view/[id].html` 動的301を含め、path/query/末尾slash/page/1/404をURL契約として移植・比較検証する（ADR 008） |
 | D11 | **多言語/表示言語** | 名言レコードごとの主表示言語 | ✅**確定（2026-07-13）**: `display_language_preference`は閲覧者設定ではなく名言の主表示言語。`ja|en`、既定`ja`、指定側欠損時は他方へfallback。物理列名は維持する（ADR 009） |
-| D12 | **キャッシュパージの使い分け** | URLパージ / タグ・prefixパージ / 短TTL委任 | **Freeでも URL/Tag/Prefix/全パージ可**（2025-04開放）。URLは800/秒・100/req、Tag/Prefixは**5req/分・100ops/req**。詳細＝URL即時、広範＝タグ（バッチ集約）、収まらない分＝短TTL。**タグ名は短い小文字ASCII**（スペース不可・合計16KB上限）で統一（§5） |
+| D12 | **キャッシュパージの使い分け** | URLパージ / タグパージ / TTL委任 | ✅**確定（2026-07-14）**: 詳細・OG・sitemapはURL、一覧・ページング・関連entity・rankingは不変ID/集合タグ。SQLite outboxで3秒集約し、最大5回再送する。大量更新は101/501件境界で対象を絞りTTLも使う。ランキングは再計算成功後だけパージする（ADR 014） |
 | D13 | **`/random` のキャッシュ方針** | 現行20件一覧 + `private, no-store` | ✅**確定（2026-07-13）**: 現行のランダム20件一覧・シャッフル・canonicalを維持し、Cloudflareでも明示Bypassする。個別名言への302は機能・SEO変更になるため採用しない（ADR 010） |
 | D14 | **オリジン保護** | Cloudflare Tunnel + Fly公開入口削除 + exact Host | ✅**確定（2026-07-14）**: Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除。Uvicornはloopbackだけにbindする。AOP・CF IP allowlist・独自secret headerは不採用。管理画面のAccess JWT検証は維持する（ADR 013） |
-| D15 | **検索レート制限** | Cloudflare Rate Limiting + debounce/最小文字数 | 60req/min固定では300ms debounceのインクリメンタル検索と衝突し得る。閾値・debounce・最小文字数をセットで確定 |
-| D16 | **CSPとHTMX規約** | `hx-on` 禁止 / hx-csp導入 / `unsafe-eval` 許容 | 原則 `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を使わず、インラインJS禁止CSPと整合させる |
+| D15 | **検索レート制限** | 1文字検索 + 500ms debounce + アプリ側IP制限 | ✅**確定（2026-07-14）**: 1文字検索を許可し、IME対応の外部静的JSで500ms trailing debounce。アプリを正本に30回/10秒・120回/60秒とする。Cloudflare Freeの1ルールはD9へ優先し、検索ruleは初期配置しない。429では結果を残して待ち時間を案内し、自動再試行しない（ADR 015） |
+| D16 | **CSPとHTMX規約** | 同一origin CSP + eval機能禁止 | ✅**確定（2026-07-14）**: inline JS/style、`hx-on`、event filter、`js:`、swap内scriptを禁止し、`allowEval=false`。nonce/hash、`unsafe-eval`、`hx-csp`は初期不採用。GA4は設定時だけ許可し、AdSenseは初期OFFで広告タスクを残す（ADR 016） |
 | D17 | **日時のSQLite保存形式** | 固定長UTC `TEXT` | ✅**確定（2026-07-13）**: `YYYY-MM-DDTHH:MM:SS.ffffffZ`へ正規化し、明示serializer/parserを使う。暦日・歴史日付は別規則（ADR 011） |
 
-> 残る未決事項は `docs/decisions/014-...` 以降のADRとして起票し、決定次第この表を更新する。
+> 残る未決事項はD5（OG画像生成）とD8（デザイン刷新範囲）。D9・D12・D15・D16は対応ADRを正本として確定済みである。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
-- [ ] 未決論点 D5・D8・D9（残件）・D12・D15・D16 の決定（D3・D14を含む既決事項と、D9表示方式は確定）
+- [x] D9・D12・D15・D16の決定とADR化（2026-07-14、ADR 006・014・015・016）
+- [ ] 残る未決論点 D5・D8 の決定
 - [ ] リポジトリ初期化（git init, Python環境, 依存管理: uv/poetry/pip-tools 選定）
 - [ ] デザイン要件定義（D8）
 
@@ -309,9 +312,9 @@ meigen-fly/
 | `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
-| `RANKING_IP_HASH_SALT` | 匿名いいねの `ip_hash` 生成 |
-| `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
-| `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時。`ads.txt` 相当も移植） |
+| `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
+| `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
+| `GA_MEASUREMENT_ID` | GA4（設定した環境だけ有効。未設定時はCSP許可先も出さない） |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
@@ -335,5 +338,5 @@ meigen-fly/
 ## 12. 次のアクション
 
 1. 本計画書レビュー・合意
-2. 未決論点 **D9の保持期間/不正対策閾値・D12（パージ境界）** を優先決定しADR化（D3管理者認証はADR 012、D14オリジン保護はADR 013で確定済み）
+2. 残る未決論点 **D5（OG画像生成）・D8（デザイン刷新範囲）** を決定（D9・D12・D15・D16はADR 006・014・015・016で確定済み）
 3. リポジトリ初期化 → フェーズ1着手

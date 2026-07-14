@@ -132,7 +132,7 @@ Report-OnlyはHTTPヘッダーで配信する（metaでは配信できない）�
 ### リリース必須
 
 - 全HTMLレスポンスで環境に対応したCSPヘッダーが1つだけ返り、HTMX断片・error responseにも基本ポリシーが付くことをテストする。画像等の非HTMLレスポンスへ同じHTMLポリシーを無意味に複製しない。
-- template / static sourceを検査し、`hx-on`、イベントフィルタ、`hx-vals` / `hx-headers`の`js:` / `javascript:`、インラインscript、DOMイベント属性、`javascript:` URL、HTMX断片内scriptを検出したらCIを失敗させる。JSON中の通常文字列等の誤検知は限定的な明示除外にする。
+- template / static sourceを検査し、`hx-on`、イベントフィルタ、`hx-vals` / `hx-headers`の`js:` / `javascript:`、実行可能なインラインscript、DOMイベント属性、`javascript:` URL、HTMX断片内scriptを検出したらCIを失敗させる。唯一のinline `script`例外は、完全HTML文書内の`<script type="application/ld+json">`で、安全なJSON serializerを通した構造化データだけを内容とし、`src`、nonce、event属性、実行可能なMIME typeを持たないものとする。HTMX断片ではJSON-LDも禁止する。この例外と、通常のinline scriptが拒否されることをCI fixtureで検証し、JSON中の通常文字列等の誤検知は限定的な明示除外にする。
 - browser testで`htmx.config.allowEval === false`、`allowScriptTags === false`、`selfRequestsOnly === true`を確認し、禁止した`hx-on` / event filter / `js:`が動作せず、通常の検索debounce、いいね、swap後の静的listenerが動くことを確認する。
 - GA4無効時はGoogle originがCSPにもHTMLにもないことを確認する。有効にする本番構成ではnetwork logで必要な送信だけが成功し、query、管理画面、いいね識別子を送らないことを確認する。
 - AdSenseとTurnstileのコード・frame・許可先が出力されないことを確認する。
@@ -144,12 +144,12 @@ Report-OnlyはHTTPヘッダーで配信する（metaでは配信できない）�
 - GA4を有効にした場合はAnalytics DebugViewでもevent内容を確認する。
 - OG URLをSNS debugger相当または直接GETで確認し、CSPへSNS hostを足さずに取得できることを確認する。
 
-## 既存文書との同期
+## 既存文書との同期（2026-07-14完了）
 
-本ADRをD16の正本とする。統合時に、所有元の文書を次のとおり同期しなければD16更新は完了しない。
+本ADRをD16の正本とする。2026-07-14に所有元の文書を次のとおり同期した。今後方針を変える場合も同じ文書を同時に更新する。
 
-- `docs/project-plan.md`のD16を「確定、`hx-on`禁止、`allowEval=false`、ADR 016参照」へ変更し、「原則`hx-on`」を削除する。環境変数表の`NEXT_PUBLIC_GA_ID`はサーバー設定`GA_MEASUREMENT_ID`へ変更する。初期OFFのAdSense IDは初期環境変数表から外し、フェーズ3の広告配置は未完タスクとして残す。
-- `docs/decisions/001-architecture-cloudflare-fly-sqlite.md`のCSP/HTMX記述を本ADRの確定規約へ合わせ、環境変数名も同様に同期する。
+- `docs/project-plan.md`のD16を確定済みとし、`hx-on`禁止、`allowEval=false`、本ADR参照へ統一した。環境変数はサーバー設定`GA_MEASUREMENT_ID`へ変更し、初期OFFのAdSense IDを外した。フェーズ3の広告配置は未完タスクとして残した。
+- `docs/decisions/001-architecture-cloudflare-fly-sqlite.md`のCSP/HTMX規約と環境変数名を本ADRへ同期した。
 
 ## 影響
 

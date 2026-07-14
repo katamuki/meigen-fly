@@ -129,7 +129,7 @@ bigramトークナイザをCで実装し `load_extension` で読み込む（永�
 - **形態素解析（SudachiPy/MeCab/Janome）は初期採用しない**。精度は最高だが辞書ロードで数十〜数百MBのメモリを食い、安価なFly.ioインスタンスと相性が悪い。将来精度に不満が出た場合のみ、**インデックス時（オフラインのビルドスクリプト）だけ**形態素解析を使い、本番サーバーには辞書を常駐させない案を検討する。
 - **Python標準`sqlite3`を採用**: 最終Dockerイメージ上で **FTS5が有効** で **`unicode61` トークナイザにbigram済みテキストを格納・検索できる**ことをCIで検証する。WAL、Online Backup API、Alembicも同じイメージでスモークテストする。必要機能が不足した場合のみ代替DBAPIを別途評価し、`pysqlite3-binary`や`apsw`への自動fallbackは行わない（ADR 007）。※`trigram` トークナイザを使う場合のみ SQLite 3.34.0以降が要るが、方式Bでは不要（補足）。
 - **`authors` もFTS5化する**: 現状authorsには全文検索インデックスが無くシーケンシャルスキャンだったため、移管を機にFTS5化して改善する。
-- **HTMXとの相性**: 検索結果のpartial HTMLを返すだけなので、`hx-get="/search"` + `hx-trigger="keyup changed delay:300ms"` でインクリメンタル検索を軽量に実装できる。
+- **HTMXとの相性**: 検索結果のpartial HTMLを返す構成とする。1文字検索、IME入力、500ms debounce、HTMX event、アプリ側レート制限、429 UIの実装契約は [`015-search-rate-limits.md`](015-search-rate-limits.md) を正本とする。
 - **バックアップ/運用**: 初期構成ではLiteFS/Litestreamを採用しない。WAL稼働中のDBを単純に `cp` せず、SQLite Online Backup APIで整合したDBを日次生成してR2へ保存する（詳細は [`003-sqlite-daily-backup.md`](003-sqlite-daily-backup.md)）。
 - **移行作業**: Supabase(PostgreSQL)からSQLiteへ移す際、元テキスト（`text/text_en/context_note`等）は保持しつつ、検索用のbigramカラム/FTS5テーブルを派生生成するビルドスクリプトを用意する。現状 `search_quotes` の重み付けロジック（本文一致優先）はFTS5 bm25 + 補助ソートへ置き換える。
 

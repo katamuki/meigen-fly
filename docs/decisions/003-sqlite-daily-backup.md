@@ -45,16 +45,19 @@ migration失敗時はsupervisordを起動せず、旧DBに対応するアプリ�
 2. R2から復元対象と `.sha256` sidecarを別パスへダウンロードし、圧縮済み成果物のSHA-256を検証して展開する。
 3. `PRAGMA integrity_check`、Alembic revision、主要テーブル件数を確認する。
 4. 必要に応じて `alembic upgrade head` を適用する。
-5. 既存DBを直接上書きせず、検証済みDBへ切り替える。
-6. アプリを起動し、`/healthz`、検索、Admin、いいねを確認する。
+5. 復旧環境に設定したいいね用秘密鍵のcurrent/previous世代IDを確認する。復元DBの`quote_likes`について、いいね作成から30日を超えた行、および鍵世代がcurrent/previousのどちらにもない行の`ip_hash`を`NULL`化する。この処理中もアプリを起動せず、公開書き込みを再開しない。
+6. 同じ条件に該当して`ip_hash IS NOT NULL`の行が**0件**であることをSQLで検証し、処理件数、実行時刻、許可したcurrent/previous世代IDだけを復旧記録へ残す。生IP、hash、`client_uuid`は記録しない。秘密鍵または世代IDを確定できない場合はfail closedとし、いいねPOSTを再開しない。
+7. 既存DBを直接上書きせず、上記gateを通過した検証済みDBへ切り替える。
+8. アプリを起動し、`/healthz`、検索、Admin、いいねを確認してから公開書き込みを再開する。
 
-Fly Volume snapshotを使う場合も、新しいVolumeへ復元して検証後にMachineへ付け替える。
+Fly Volume snapshotを使う場合も、新しいVolumeへ復元し、同じIP hash削除gateを含む検証後にMachineへ付け替える。IP hashの30日保持、鍵rotation、復旧時の削除条件は [`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md) を正本とする。
 
 ## 運用・検収
 
 - 毎日03:30 JSTまでに当日分がR2に存在し、最新成功から25時間以内であることを監視する。
 - バックアップ失敗通知をテストする。
 - 月1回、R2バックアップを別DBへ実際に復元し、整合性・Alembic revision・主要件数を検証する。
+- 月次復元演習では、30日超およびcurrent/previousにない鍵世代の`quote_likes.ip_hash`が削除され、公開書き込み再開前の検証queryが0件となることも確認する。
 - 暫定目標は、正常時 **RPO 約24時間、RTO 30分〜数時間**とする。実復元演習の結果で見直す。
 
 ## 将来の再検討条件

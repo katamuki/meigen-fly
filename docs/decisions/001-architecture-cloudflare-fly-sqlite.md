@@ -131,65 +131,13 @@ async def cache_headers(request, call_next):
 
 名言詳細と一覧（`/quotes*`、`/quotes/latest*`）のSSR HTMLへいいね数を含め、`s-maxage=600, max-age=60` でキャッシュする。毎PVで件数を取得するGET/HTMX断片APIは作らず、いいねごとのCloudflareパージも行わない。
 
-登録は公開HTMLと分離した `POST /api/likes/{quote_id}` で受け、`private, no-store` とCloudflare Bypassを必須にする。成功応答で最新件数を返し、押した本人のDOMだけ即時更新する。TTL内の再読込で一時的に古い件数へ戻ることは許容し、「押した」状態はlocalStorageから復元する。詳細と残る未決事項は [`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md) を参照。
+登録は公開HTMLと分離した `POST /api/likes/{quote_id}` で受け、`private, no-store` とCloudflare Bypassを必須にする。成功応答で最新件数を返し、押した本人のDOMだけ即時更新する。TTL内の再読込で一時的に古い件数へ戻ることは許容し、「押した」状態はlocalStorageから復元する。不正対策、IP hashのライフサイクル、レート制限、Turnstile導入境界を含む詳細は [`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md) を正本とする。
 
 ## 5. キャッシュパージ
 
-Admin から更新した際、Cloudflare API で **該当 URL（個別ページ）とタグ（一覧など広範）を併用**してパージする。
+Admin更新時は個別詳細・既知のOG URL・`/sitemap.xml`をURLパージし、一覧・全ページング・関連entity・トップ・ランキングは`Cache-Tag`でパージする。タグは変更可能なslugではなく、不変の数値IDを使う`quote-{id}`、`author-{id}`、`category-{id}`等の個体タグと、`quotes-list`、`home`、`ranking`等の集合・派生タグに統一する。
 
-> ✅ **Cloudflare Free でも各種パージが使える**（公式ドキュメント「Purge cache」Availability and limits, 2026-04-16更新で確認）: **URL / Hostname / Tag（`tags`）/ Prefix（`prefixes`）/ Purge Everything すべて Free プランで利用可能**。※旧記述の「タグ/prefixはEnterprise限定」は**誤りのため訂正**。
-> ⚠️ ただし Free の **Tag/Prefix/Hostname/全パージのレート制限は 5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。URL単位パージは別枠で上限が高い。運用方針は次の通り（[`project-plan.md`](../project-plan.md) §5・D12）:
-> - **個別詳細ページ・OG画像 → URLパージ**で即時反映（高上限）。
-> - **一覧・著者/カテゴリ・ランキング等の広範な無効化 → `Cache-Tag` を付与してタグパージ**でまとめて落とす（5req/分に収まるようバッチ集約）。
-> - 制約に収まらない範囲は**短めの `s-maxage` で自然失効に委ねる**。
-
-```python
-import httpx, os
-
-CF_ZONE = os.environ["CF_ZONE_ID"]
-CF_TOKEN = os.environ["CF_API_TOKEN"]
-
-async def _purge(payload: dict):
-    async with httpx.AsyncClient() as c:
-        await c.post(
-            f"https://api.cloudflare.com/client/v4/zones/{CF_ZONE}/purge_cache",
-            headers={"Authorization": f"Bearer {CF_TOKEN}"},
-            json=payload,
-            timeout=10.0,
-        )
-
-async def purge_urls(urls: list[str]):        # 個別ページ（高上限）: 1リクエスト最大100URL
-    await _purge({"files": urls})
-
-async def purge_tags(tags: list[str]):        # 広範な無効化: Freeは5req/分・最大100タグ/req
-    await _purge({"tags": tags})
-
-async def purge_prefixes(prefixes: list[str]):  # パス配下一括: Freeは5req/分
-    await _purge({"prefixes": prefixes})
-```
-
-各レスポンスに `Cache-Tag` ヘッダーを付与しておくと、タグパージでまとめて無効化できる（例: 個別名言に `quote-{id}`、一覧系ページに `quotes-list` / `author-{id}` / `category-{slug}`）。Cloudflare は visitor へ返す前に `Cache-Tag` ヘッダーを除去する（利用者からは見えない）。
-
-> ⚠️ **`Cache-Tag` の制約**（[公式](https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-tags/)）:
-> - **印字可能ASCIIのみ・スペース不可・大文字小文字は区別しない**（`Tag1` と `tag1` は同一）。→ タグ名は `author-123` / `category-slug` のような**短い小文字ASCII**に統一する。
-> - レスポンスの `Cache-Tag` ヘッダー合計は **16KB まで（≈1,000タグ）**。API パージ時の1タグは最大 **1,024文字**。
-> - 全パージ方式は **2025-04 以降 全プランで利用可能**（Free含む。タグ付け＝Cache-Tagヘッダーも Free で有効）。
-
-### パージ対象の設計
-
-**個別ページは URL パージ（即時・高上限）／一覧など広範な無効化は Tag パージ**で使い分ける。
-
-| 更新操作 | URLパージ（`files`） | タグパージ（`tags`） |
-|---|---|---|
-| 名言 追加/編集/削除 | `/quotes/{id}`, 該当OG `/api/og?...` | `quotes-list`, `author-{id}`, `category-{slug}`, `ranking`, `home` |
-| 著者 追加/編集 | `/authors/{slug}` | `authors-list`, `author-{id}` |
-| カテゴリ 編集 | `/categories/{slug}` | `categories-list`, `category-{slug}` |
-| 出典/登場人物 編集 | `/sources/{slug}`, `/characters/{slug}` | `sources-list`, `characters-list` |
-
-- **URLパージの上限（Free）**: **800 URLs/秒・1リクエスト最大100URL**（旧記述「最大30URL/リクエスト」は誤りのため訂正）。100超は分割送信する。
-- **Tag/Prefixパージの上限（Free）**: **5リクエスト/分・1リクエスト最大100オペレーション**（バケット25）。一括登録など短時間の大量更新はバッチ集約する。
-- 広範に落としたい範囲がレート制限に収まらない場合は、短めの `s-maxage` で自然失効に委ねる（§3 のTTL設計）。
-- 完全にリセットしたい場合は `purge_everything: true`（多用しない）。
+更新entityごとの対象、変更前後の関連ID取得、ランキング再計算後の波及、3秒集約、SQLite outbox、最大5回の再送、sitemap、101/501件を境界とする一括登録、TTL fallbackの詳細は [`014-cache-purge-boundaries.md`](014-cache-purge-boundaries.md) を唯一の正本とする。通常処理ではPrefixパージとPurge Everythingを使わず、緊急時だけ管理CLIから実行する。ADR 014は本節の旧タグ例・旧パージ対象表を置き換える。
 
 ## 6. SQLite 構成
 
@@ -296,7 +244,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - （Page Rules は廃止方向のため **Cache Rules に統一**。旧 Page Rule 相当は上記③でカバー）
 - **WAF**:
   - Bot Fight Mode ON
-  - Rate limiting: `/search` は debounce/最小文字数とセットで閾値を決める（例: 60req/min固定だとインクリメンタル検索で正規ユーザーに当たり得る）
+  - Rate limiting: Freeの1ルールは`/api/likes/*`へ優先し、IP単位10回/10秒・10秒blockの粗いburst shieldとする。`/search`用Cloudflare ruleは初期配置せず、アプリ側の30回/10秒・120回/60秒を正本とする。検索は1文字から500ms debounceで実行する（[ADR 006](006-like-count-cache-strategy.md)、[ADR 015](015-search-rate-limits.md)）
 - **Admin access**: 接続元IPは固定できないため、IP allowlistは使わない。Cloudflare Access + 外部IdP + Access independent MFAとFastAPIでのAccess JWT検証を使用する（ADR 012）
 - **Origin protection（D14・確定）**: Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除する。FastAPIでexact Hostを検証し、AOP・CF IP allowlist・独自secret headerは併用しない（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 
@@ -322,9 +270,9 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
-| `RANKING_IP_HASH_SALT` | 匿名いいねの `ip_hash` 生成 |
-| `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
-| `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時） |
+| `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
+| `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
+| `GA_MEASUREMENT_ID` | GA4（設定した環境だけ有効。未設定時はCSP許可先も出さない） |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
@@ -333,8 +281,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - Admin: Cloudflare Access + 外部IdP + Access independent MFA + FastAPIでのAccess JWT検証 + `admin_users`認可。接続元IP固定は前提にしない
 - CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
 - Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
-- CSP ヘッダー（インラインJS禁止）
-- HTMX利用時は `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を原則禁止し、`unsafe-eval` なしのCSPと整合させる。必要な場合は hx-csp 等を検討する
+- CSPはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしの同一オリジン構成を基本とする。GA4は`GA_MEASUREMENT_ID`設定時だけ必要な許可先を追加し、AdSenseは初期OFFとする（[ADR 016](016-csp-htmx-rules.md)）
+- HTMXは`allowEval=false`、`allowScriptTags=false`とし、`hx-on`、イベントフィルタ、`js:`/`javascript:`値、断片内scriptを禁止する。`hx-csp`は初期採用しない（[ADR 016](016-csp-htmx-rules.md)）
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 

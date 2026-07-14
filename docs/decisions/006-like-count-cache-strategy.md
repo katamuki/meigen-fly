@@ -38,7 +38,7 @@
 
 | 判定単位 | 初期値 | 動作と意図 |
 | --- | --- | --- |
-| Cloudflareの送信元IP | 30回/1分 | 超過後1分間block。明らかなburstをorigin到達前に止める |
+| Cloudflareの送信元IP | 10回/10秒 | `/api/likes/*`を対象に超過後10秒間blockする粗いburst shield。Freeの1ルール枠をいいねへ優先し、検索用ruleは初期配置しない |
 | アプリの`ip_hash` | 60回/10分、300回/24時間 | 超過は429。共有NATを考慮した高めの洪水防止上限であり、投票重複判定には使わない |
 | `client_uuid` | 10回/10分、100回/24時間 | 超過は429。値はUUID形式・最大長を検証し、任意文字列でカウンターを増殖させない |
 | `quote_id` | 600回/10分 | 超過は429。特定名言への集中でSQLiteが圧迫される場合の全体安全弁 |
@@ -56,7 +56,7 @@
 
 ## `ip_hash`のライフサイクル
 
-- `CF-Connecting-IP`をIP parserで検証し、IPv4/IPv6を区別する1 byteのfamily markerと、ネットワークバイト順のpacked address（IPv4は4 bytes、IPv6は16 bytes）を連結した値から`HMAC-SHA-256(secret, family || packed_address)`を生成する。入力文字列を直接hashせず、IPv6の圧縮・ゼロ埋め・大文字小文字が違っても同じhashにする。文書・環境変数名では既存の`RANKING_IP_HASH_SALT`を維持できるが、実体は32 bytes以上の暗号学的乱数による秘密鍵とする。DBにはhashと鍵世代だけを保存する。
+- `CF-Connecting-IP`をIP parserで検証し、IPv4/IPv6を区別する1 byteのfamily markerと、ネットワークバイト順のpacked address（IPv4は4 bytes、IPv6は16 bytes）を連結した値から`HMAC-SHA-256(secret, family || packed_address)`を生成する。入力文字列を直接hashせず、IPv6の圧縮・ゼロ埋め・大文字小文字が違っても同じhashにする。既存の`RANKING_IP_HASH_SALT`をcurrent秘密鍵名として維持し、実体は32 bytes以上の暗号学的乱数とする。current世代IDは`RANKING_IP_HASH_SALT_GENERATION`、24時間の重複期間だけ使う旧秘密鍵・世代IDは`RANKING_IP_HASH_SALT_PREVIOUS`と`RANKING_IP_HASH_SALT_PREVIOUS_GENERATION`に設定する。previousの組は通常時は未設定とし、片方だけ設定された不整合ではPOSTを503にする。DBにはhashと鍵世代だけを保存する。
 - 稼働DBの`ip_hash`列はnullableとし、作成から**30日**で`NULL`化する。日次cleanupで期限切れを処理し、匿名いいねレコードと`client_uuid`による一意性、集計済みの件数は残す。稼働DBでは期限後にIP横断分析を再現できる情報を残さない。
 - 秘密鍵は**30日ごと**にローテーションする。自動的な外部KMSは導入せず、秘密設定に`current`、`previous`、世代IDを保持し、運用チェックリストに沿って更新する。
 - 更新後24時間は、読み取り・レート判定時にcurrentとpreviousの両hashを照合し、新規書き込みはcurrentだけを使う。全インスタンス（初期は1台）がcurrentへ移行したことを確認してからpreviousを削除し、previous世代のDB hashも`NULL`化する。したがってローテーション境界では30日未満のhashが早く消える場合があるが、プライバシーを優先して受容する。旧鍵をさらに保持して連続追跡しない。
@@ -73,7 +73,7 @@
 3. 不正いいねを1回50件以上手動取消する事案が30日間に2回以上ある。
 4. いいね集中に起因して5xxが15分窓で1%以上、またはp95が1秒以上となる事象が7日間に2回以上ある。
 
-導入時はPrivacy Policyを先に更新し、tokenを各POSTでbackendのSiteverify APIへ送り、`hostname`と`action`も検証する。token不正・期限切れは投票せず再試行UIを返す。Siteverify timeout/障害は投票せず503とし、短いtimeoutと限定回数のretryを行う（レート制限を迂回するfail-openはしない）。秘密鍵をfrontendへ出さない。30日連続で全条件を下回っても、運用変更による再発リスクを確認してから撤去を判断し、自動では切り替えない。
+導入時はPrivacy Policyと [`016-csp-htmx-rules.md`](016-csp-htmx-rules.md) を先に更新し、`challenges.cloudflare.com`等の最新公式CSP要件を必要なrouteだけへ追加する。初期CSP allowlistにはTurnstileの許可先を含めない。tokenを各POSTでbackendのSiteverify APIへ送り、`hostname`と`action`も検証する。token不正・期限切れは投票せず再試行UIを返す。Siteverify timeout/障害は投票せず503とし、短いtimeoutと限定回数のretryを行う（レート制限を迂回するfail-openはしない）。秘密鍵をfrontendへ出さない。30日連続で全条件を下回っても、運用変更による再発リスクを確認してから撤去を判断し、自動では切り替えない。
 
 ## Privacy Policyへ記載する内容
 
@@ -89,6 +89,7 @@
 
 2026-07-14に次の公式資料を確認した。
 
+- [Cloudflare Rate limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/): Freeはzone当たり1ルール、式の主な対象はPathとVerified Bot、カウント特性はIP、counting periodとmitigation timeoutは10秒。Freeの現行制約に合わせ、いいねを10回/10秒・10秒blockの補助層とし、アプリ側の長窓制限を正本とする。
 - [Cloudflare HTTP headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/): `CF-Connecting-IP`はCloudflare edgeからoriginへの通信で付与され、通常は単一IP形式。同一zone Worker subrequestでは値の扱いが変わるため、ADR 013の再評価条件を維持する。
 - [Cloudflare Turnstile: Validate the token](https://developers.cloudflare.com/turnstile/get-started/server-side-validation/): server-side Siteverifyが必須で、tokenは5分間有効かつsingle-use。導入時のfail closed、再試行、`hostname`/`action`検証の根拠とする。
 

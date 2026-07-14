@@ -18,7 +18,7 @@
 - 入力値は先頭・末尾のUnicode空白を除去し、連続するUnicode空白をASCII 1個へ畳む。この正規化後の値を表示、文字数判定、検索、同一値判定に共通利用する。Unicode正規化や大文字小文字変換はこのADRでは追加しない。
 - インクリメンタルUIでは、正規化後0文字ならDB検索もHTTPリクエストも行わず、結果領域を空の初期表示へ戻す。上限は100 Unicodeコードポイントとし、超過時は検索せず入力欄付近へ案内する。サーバーも同じ正規化・0〜100文字の検証を行い、0文字は初期表示を返してDB検索しないため、クライアント判定はセキュリティ境界にしない。
 - インクリメンタル検索は最後の確定入力から**500ms**のtrailing debounceとする。300msよりリクエストを抑えつつ、検索UIとして待ち時間を認識しにくい値である。
-- 本ADRはADR 002にある`keyup changed delay:300ms`の実装例を上書きする。統合時にADR 002の例を本ADRへの参照へ置き換え、debounceとイベント方式の正本を本ADRへ一本化する。
+- 本ADRはADR 002にあった`keyup changed delay:300ms`の実装例を上書きし、debounceとイベント方式の正本となる。ADR 002は本ADRへの参照へ同期済みである。
 - `keyup`を起点にしない。外部の静的JavaScriptが`input`、`compositionstart`、`compositionend`を監視し、IME composition中はタイマーを停止する。確定後の現在値に対して500msを計り、前回送信した正規化値と異なる場合だけ`search:changed`カスタムイベントをdispatchする。HTMLは概ね`hx-get="/search"`、`hx-trigger="search:changed queue:last"`、`hx-include`、`hx-target`で現在の入力値を送る。イベントフィルタや`hx-on`へJavaScript式を書かない。
 - Enterまたは検索ボタンによる通常のGET form submitはdebounceを待たず実行する。JavaScript無効時もこの通常ページ検索を利用できる。HTMXの実行中に新しい確定値が来た場合は`queue:last`で最新1件だけを後続実行し、中間値を全件queueしない。
 

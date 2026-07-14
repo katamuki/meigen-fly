@@ -10,7 +10,7 @@
 
 ## 決定
 
-- 本番の公開オリジンおよびcanonical hostは **`https://www.meigensyu.com/`** とする。管理下の本番公開alias `https://meigensyu.com/` は、pathとqueryを維持して`www`のHTTPS URLへ1 hopで恒久リダイレクトする。`new.meigensyu.com`など明示した検証環境は対象外とし、`*.fly.dev`や未知のHostはリダイレクトせずD14の方針に従って拒否する。
+- 本番の公開オリジンおよびcanonical hostは **`https://www.meigensyu.com/`** とする。管理下の本番公開alias `https://meigensyu.com/` は、pathとqueryを維持して`www`のHTTPS URLへ1 hopで恒久リダイレクトする。`new.meigensyu.com`など明示した検証環境は対象外とし、`*.fly.dev`や未知のHostはリダイレクトせず、Cloudflare Tunnelとexact Host検証を定めたD14（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）に従って拒否する。
 - 現行で200を返す公開URLは、同じpath/queryで同等コンテンツを返す。
 - 現行のcanonical、ページング、フィルタ、ソート、末尾slash、範囲外ページの404をURL契約として維持する。
 - 既存の恒久リダイレクトは最終canonicalへ1 hopの301または308で移植し、リダイレクトチェーンを作らない。

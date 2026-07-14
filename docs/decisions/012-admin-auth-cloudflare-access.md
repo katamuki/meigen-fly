@@ -24,9 +24,9 @@
 
 ## D14（オリジン保護）との境界
 
-FastAPIによるAccess JWT検証により、`*.fly.dev`などから`/admin`またはその配下へ直接到達しても、正しく署名された管理画面用JWTがなければ拒否できる。ただし、これはサイト全体のCloudflare迂回を防ぐものではない。
+D14の実装後はFlyのpublic IP/serviceを削除するため、`*.fly.dev`などから`/admin`へ直接到達できない。切替中またはネットワーク設定を誤った場合でも、FastAPIによるAccess JWT検証により、正しく署名された管理画面用JWTがなければ拒否する。ただし、JWT検証自体はサイト全体のCloudflare迂回対策の代替ではない。
 
-匿名いいね、検索、公開ページを含むオリジン全体の保護はD14として別途決定する。D14確定後も、管理画面のAccess JWT検証は多層防御として維持する。
+匿名いいね、検索、公開ページを含むオリジン全体は、D14（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）に従いCloudflare Tunnelを唯一の公開HTTP経路としてFlyのpublic IP/serviceを削除する。D14確定後も、管理画面のAccess JWT検証は多層防御として維持する。
 
 ## 実装・検証
 
@@ -35,7 +35,7 @@ FastAPIによるAccess JWT検証により、`*.fly.dev`などから`/admin`ま�
 - IdPの種類やAMR claimの有無にかかわらずAccess independent MFAが要求され、未登録・未実施の利用者を拒否することをデプロイ前に確認する。各session durationが8時間以下で、8時間経過後の次回アクセス時にAccess policyの再評価とindependent MFAが行われることを確認する。
 - JWTと`admin_users`のemail不一致、未登録`iss`/`sub`、IdP切替、管理者追加・無効化のcontrol-plane不整合をfail closedにできることを確認する。
 - 設定した`PUBLIC_ORIGIN`以外のOrigin、CSRF tokenなし、cross-site Fetch Metadataによる状態変更を拒否する。本番では`https://www.meigensyu.com`だけを許可する。
-- `*.fly.dev/admin/*`への直接アクセスと、偽造した`Cf-Access-Jwt-Assertion`が403になることをE2Eで確認する。
+- 外部E2EではD14適用後に`*.fly.dev/admin/*`へ接続できず、正規hostの`/admin*`がCloudflare Accessで保護されることを確認する。JWTなし・偽署名・claim不正の`Cf-Access-Jwt-Assertion`はASGI integration test、またはFly管理経路からlocalhostへ正規Hostを付けたテストでFastAPIが403にすることを確認する。
 - `/admin`とその全配下、および`/login`がCloudflareとブラウザでキャッシュされないことを確認する。
 - 通常ログアウト、ユーザー単位`Revoke`、application単位`Revoke existing tokens`、管理者無効化、IdP障害、Cloudflare Access障害、公開鍵ローテーション、CLI復旧を演習する。
 

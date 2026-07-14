@@ -26,7 +26,7 @@
 
 ## 公開書き込みの前提
 
-- オリジン直撃を拒否するD14の実装を、公開いいねのリリース前提とする。信頼できるCloudflare経路からのみ `CF-Connecting-IP` を受け入れる。
+- Cloudflare Tunnelを唯一の公開HTTP経路にしてFlyのpublic IP/serviceを削除するD14（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）の実装を、公開いいねのリリース前提とする。匿名いいねPOSTでは単一かつ妥当なIPv4/IPv6の`CF-Connecting-IP`だけを受け入れ、`X-Forwarded-For`等へfallbackしない。
 - exact `Origin`、Fetch Metadata、Content-Typeを検証し、Cloudflareとアプリの両方でレート制限する。Origin/Refererだけをbot対策とはみなさない。
 - `(quote_id, client_uuid)` をDBの一意制約にし、`ip_hash`は共有NATを考慮して即時の一律拒否ではなく、レート制限・不正検知の補助信号とする。これはbest-effortの多重抑制であり、強い本人認証ではない。
 - INSERT、重複判定、最新件数取得は短い単一transactionで行う。重複は冪等な成功応答、レート超過は429、SQLite競合をretry後も解消できない場合は503とする。

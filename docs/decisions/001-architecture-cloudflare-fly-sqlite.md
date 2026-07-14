@@ -8,8 +8,8 @@
      ▼
 [Cloudflare (CDN + WAF)]   ← エッジキャッシュ・DDoS対策・Bot対策
      │
-     ▼
-[Fly.io (FastAPI + Uvicorn)]
+     ▼ Cloudflare Tunnel（outbound-only）
+[Fly.io (cloudflared + FastAPI + Uvicorn)]
      │
      ▼
 [SQLite (単一 Fly Volume、WAL)]
@@ -21,7 +21,7 @@
 - **DB**: SQLite。書き込みは**原則 Admin のみ**（例外は匿名いいねの専用書き込み経路）、読み取り中心
 - **CDN**: Cloudflare（無料プランで十分）
 - **ホスティング**: Fly.io（東京リージョン `nrt` 推奨）
-- **公開オリジン**: `https://www.meigensyu.com/`
+- **公開ホスト**: `https://www.meigensyu.com/`（Fly.ioの公開IP/serviceは持たない）
 - **バックアップ**: 毎日03:00 JSTに整合したSQLiteバックアップをR2へ保存。Fly Volume snapshotは二次復旧手段
 
 ## 2. キャッシュ戦略の基本方針
@@ -51,6 +51,7 @@
 | **`/search`** | `private, no-store` | キャッシュしない |
 | **`/admin`, `/admin/*`, `/login`** | `private, no-store` | 管理認証フローをキャッシュしない |
 | **`POST /api/likes/*`** | `private, no-store` | キャッシュしない |
+| **`/healthz`** | `private, no-store` | Tunnelからoriginまでの外形監視。CloudflareでもBypass |
 | `/static/*`（CSS/JS/画像） | `public, max-age=31536000, immutable` | 1年（ファイル名にハッシュ付与） |
 
 ## 4. FastAPI 実装ポイント
@@ -79,9 +80,9 @@ _SORTED_RULES = sorted(CACHE_RULES.items(), key=lambda kv: len(kv[0]), reverse=T
 async def cache_headers(request, call_next):
     response = await call_next(request)
     path = request.url.path
-    # /adminとその配下、/searchとその配下、/loginは必ずno-store
+    # /adminとその配下、/searchとその配下、/login、/healthzは必ずno-store
     if (
-        path in ("/admin", "/search", "/login")
+        path in ("/admin", "/search", "/login", "/healthz")
         or path.startswith(("/admin/", "/search/"))
     ):
         response.headers["Cache-Control"] = "private, no-store"
@@ -124,7 +125,7 @@ async def cache_headers(request, call_next):
 - FastAPIでも`Cf-Access-Jwt-Assertion`の署名・`iss`・`aud`・`exp`・`nbf`・`iat`・`type`・`sub`・emailを検証し、`admin_users`のrole・有効状態で認可する。Basic認証とアプリ独自パスワードは使わない（[ADR 012](012-admin-auth-cloudflare-access.md)）
 - Access session cookieを伴うためキャッシュ不可。`/admin`とその全配下、および`/login`は`private, no-store`とする
 - 状態変更にはCSRF token、環境ごとの`PUBLIC_ORIGIN`との完全一致`Origin`、Fetch Metadata検証を必須とする。本番の`PUBLIC_ORIGIN`は`https://www.meigensyu.com`に固定する
-- 管理画面のJWT検証とは別に、匿名いいね等を含むサイト全体のCloudflare迂回対策をD14で確定する
+- 管理画面のJWT検証とは別に、サイト全体のCloudflare迂回をCloudflare TunnelとFlyの公開IP/service削除で防ぐ（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 
 ### 4.6 いいね数の表示
 
@@ -248,12 +249,12 @@ primary_region = "nrt"
 [build]
   dockerfile = "Dockerfile"
 
-[http_service]
-  internal_port = 8000
-  force_https = true
-  auto_stop_machines = false
-  auto_start_machines = true
-  min_machines_running = 1
+# Cloudflare Tunnelからlocalhostへ接続するため、
+# [http_service] / [[services]] は定義しない。
+
+[[restart]]
+  policy = "always"
+  processes = ["app"]
 
 [[vm]]
   size = "shared-cpu-1x"
@@ -267,25 +268,27 @@ primary_region = "nrt"
 
 - SQLite は `/data` にマウントされたボリュームに置く
 - 初期構成は1 Machineとし、日次ジョブを確実に実行するため常時起動する
+- public IPv4/IPv6を解放し、公開serviceを定義しない。デプロイ後はMachine実設定も確認する（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 - 高可用性や複数リージョンDBが必要になった場合は、SQLiteレプリケーションだけでなくマネージドDBも含めて再設計する
 
 ### 7.2 Dockerfile 要点
 
 - `python:3.12-slim` ベース
-- 初期は `uvicorn --workers 1 --host 0.0.0.0 --port 8000`
-- entrypointがmaintenance lockを取得してmigrationを完了した後、PID 1として `supervisord` をexecし、Uvicornとsupercronicを監督・再起動する
-- ヘルスチェック `/healthz` を用意
+- 初期は `uvicorn --workers 1 --host 127.0.0.1 --port 8000`
+- 固定バージョンの`cloudflared`を同梱し、自動更新は使わない
+- entrypointがmaintenance lockを取得してmigrationを完了した後、PID 1として `supervisord` をexecし、Uvicorn、`cloudflared`、supercronicを監督・再起動する
+- `/healthz`は`private, no-store`とCloudflare Bypassを設定し、外形監視とデプロイ後smoke testに使う
 
 FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計を含む全定期ジョブはsupercronicからCLIとして実行し、共通maintenance lock、ジョブ別 `flock`、timeout、非ゼロ終了、失敗通知を必須にする。負荷観測後に必要な場合だけHTTP workerを2へ増やし、定期ジョブ数は増やさない（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
 
 ## 8. Cloudflare 設定
 
-- **DNS**: A/AAAA レコードを Fly.io のIPに向ける（proxied = ON）
-- **SSL/TLS**: Full (strict)
+- **DNS/Tunnel**: `www.meigensyu.com`をremotely-managed Cloudflare TunnelのPublished applicationに割り当て、`http://127.0.0.1:8000`へ転送する。wildcard routeは使わず、未一致routeは404にする。apex `meigensyu.com`はproxied placeholder A `192.0.2.0`とRedirect Ruleでpath/queryを維持して`www`へ301または308を返す
+- **SSL/TLS**: 利用者とCloudflare間のedge証明書はCloudflareで管理する。TunnelからlocalhostはHTTPとし、専用のorigin証明書は持たない
 - **Cache Rules**（ダッシュボードから設定。**Cache Rules は last matching rule wins**）:
   1. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
   2. `/static/*` → Eligible for cache, Edge TTL 1 month
-  3. `/admin`・`/admin/*`・`/login`・`/search*`・`/random`・`/api/likes/*` → **Bypass cache**（Cookie/動的/公開書き込みのため必ず除外）
+  3. `/admin`・`/admin/*`・`/login`・`/search*`・`/random`・`/api/likes/*`・`/healthz` → **Bypass cache**（Cookie/動的/公開書き込み/外形監視のため必ず除外）
 - ⚠️ **重要**: Cache Rules は複数マッチ時に最後の一致ルールが勝つ。旧Page Rulesの「先勝ち」と逆なので、Bypassルールは公開HTMLのEligibleルールより**後（下）**に配置する。
 - ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記1の公開HTML Cache Rule が必須。
   - 参照: [Default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
@@ -295,7 +298,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
   - Bot Fight Mode ON
   - Rate limiting: `/search` は debounce/最小文字数とセットで閾値を決める（例: 60req/min固定だとインクリメンタル検索で正規ユーザーに当たり得る）
 - **Admin access**: 接続元IPは固定できないため、IP allowlistは使わない。Cloudflare Access + 外部IdP + Access independent MFAとFastAPIでのAccess JWT検証を使用する（ADR 012）
-- **Origin protection（D14・未決）**: Authenticated Origin Pullsを第一候補とし、Hostヘッダ検証、Cloudflare IPレンジ検証を候補に、サイト全体のオリジン直撃対策を別途確定する
+- **Origin protection（D14・確定）**: Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除する。FastAPIでexact Hostを検証し、AOP・CF IP allowlist・独自secret headerは併用しない（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 
 ## 9. デプロイ・運用
 
@@ -316,12 +319,12 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `PUBLIC_ORIGIN` | 環境ごとの公開オリジン。本番は`https://www.meigensyu.com`（末尾slashなし） |
 | `CF_ZONE_ID` | Cloudflare Zone ID |
 | `CF_API_TOKEN` | Cloudflare API Token（`Cache Purge` 権限のみ） |
+| `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
 | `RANKING_IP_HASH_SALT` | 匿名いいねの `ip_hash` 生成 |
 | `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
 | `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時） |
-| `ORIGIN_PROTECTION_*` | AOP/Host/CF IP検証など、方式確定後に定義 |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
@@ -343,8 +346,10 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 4. 動作確認・キャッシュヘッダー検証（`curl -I` で確認）
 5. Cloudflare を経由させて動作確認
 6. DNS切替直前に差分再移行、または旧環境のAdmin/いいね書き込みを短時間凍結
-7. DNS を切り替え（TTL を事前に短くしておく）
-8. 旧環境は 1〜2週間維持し、問題なければ廃止
+7. 検証環境の許可Host・`PUBLIC_ORIGIN`を`www.meigensyu.com`へ、`CF_ACCESS_AUD`を本番Access applicationのaudienceへ変更してデプロイ
+8. `www`のDNS/Tunnel routeを切り替え（TTL を事前に短くしておく）
+9. 公開ページと管理画面の正常性を確認し、`new.`の一時Tunnel routeとAccess applicationを削除
+10. 旧環境は 1〜2週間維持し、問題なければ廃止
 
 ## 13. 期待効果
 
@@ -368,7 +373,10 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] 毎日03:30 JSTまでに当日分がR2にあり、最新成功から25時間を超えた場合または失敗時に通知される
 - [ ] R2バックアップから別DBへの復元、SHA-256、`integrity_check`、Alembic revision、主要件数の検証に成功する
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
-- [ ] `/healthz` が 200 を返す
+- [ ] `/healthz` が`private, no-store`かつCloudflare Bypassで200を返し、外形監視とデプロイ後smoke testがorigin停止を検知する
 - [ ] OG画像 `/api/og?type=quote&id=...` がエッジキャッシュされる
-- [ ] Cloudflareを経由しないオリジン直撃が拒否される
+- [ ] `fly ips list`にpublic IPがなくMachine実設定に公開serviceがなく、`*.fly.dev`と旧Anycast IPから到達できない
+- [ ] Tunnel routeとFastAPIが`www.meigensyu.com`だけを許可し、未知Hostを拒否する
+- [ ] 匿名いいねPOSTが`CF-Connecting-IP`の欠落・重複・カンマ区切り・不正なIPv4/IPv6を拒否する
+- [ ] `cloudflared`停止時に迂回経路がなくfail closedになり、public IP削除後もFlyの管理経路から復旧できる
 - [ ] `new.` サブドメインがインデックス不可になっている

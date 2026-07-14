@@ -66,11 +66,22 @@ Cloudflareの公式仕様を2026-07-14に確認した。FreeプランでもURL�
 
 通常CRUDでは、同一DB transaction内で更新と必要なpurge itemを`cache_purge_outbox`へ登録する。UvicornはADR 005どおり初期は1 workerとし、最初のitem登録時にだけ起動するイベント駆動の軽量flusherが**3秒**だけ待って重複を除去し、URLとタグをそれぞれ最大100件へ分割して送る。これは定期ジョブをFastAPIのstartup/lifespanで起動するものではない。管理画面のHTTP応答はCloudflare APIを待たない。
 
-outboxは`id`、`kind`（`url`または`tag`）、`value`、`state`（`pending|inflight|failed`）、`not_before`、`attempts`（実送信回数）、`lease_until`、`last_error`、`created_at`を持つ小さなSQLiteテーブルとする。`pending`行だけの`(kind, value)`部分一意indexにより、同じ3秒窓の更新をupsertで集約する。送信者は短い`BEGIN IMMEDIATE`でdueな行を`inflight`へclaimし、API timeout 10秒より十分長い**60秒lease**を設定する。API通信はtransaction外で行い、成功時はclaimした`id`だけを削除する。送信中に同じ値の更新が来た場合は別の`pending`行を作れるため、古い送信のackで新しい要求を消さない。
+outboxは`id`、`kind`（`url`または`tag`）、`value`、`state`（`pending|inflight|failed`）、`not_before`、`attempts`（実送信回数）、`lease_until`、`last_error`、`created_at`を持つ小さなSQLiteテーブルとする。通常enqueueは新規`pending`行の`not_before`を`created_at + 3秒`とする。`pending`行だけの`(kind, value)`部分一意indexにより同じ3秒窓の更新をupsertで集約し、競合時は既存行の最初の`created_at`と`not_before`を維持して窓を延長しない。送信者は短い`BEGIN IMMEDIATE`でdueな行を`inflight`へclaimし、API timeout 10秒より十分長い**60秒lease**を設定する。API通信はtransaction外で行い、成功時はclaimした`id`だけを削除する。送信中に同じ値の更新が来た場合は別の`pending`行を作れるため、古い送信のackで新しい要求を消さない。
 
 失敗またはlease切れの`inflight`行を戻す際、同じ`(kind, value)`の`pending`行がなければ、その行を`pending`へ戻して`attempts`を維持し、`not_before`をretry時刻にする。新しい`pending`行が既にあれば、1回の将来purgeが両更新を包含するため古い行を削除し、新しい行を残す。新しい行の`created_at`、`attempts`、`not_before`は変更せず、古い失敗は構造化ログだけに残す。この競合解消も短い`BEGIN IMMEDIATE`内で行う。
 
 専用Redis、Cloudflare Queues、Celeryは導入しない。プロセス停止中の再送用に、同じdrain処理を行うCLIを起動時、デプロイ後、一括処理完了後、および既存supercronicから1分間隔で実行できるようにする。CLIとアプリflusherは上記のclaimにより同じ行を同時送信しない。
+
+#### flusherのarmingと終了条件
+
+アプリ内flusherはプロセス内で`IDLE`、`WAITING`、`DRAINING`の3状態だけを持ち、状態変更を1個のasync lockで直列化する。outboxが正本であり、この状態は再起動をまたいで永続化しない。状態遷移は次のとおりとする。
+
+1. enqueueはDB transactionをcommitした**後**に同じプロセスの`arm()`を呼ぶ。`IDLE`なら`WAITING`へ遷移して、通常の新規itemは最初の登録から3秒後、retry待ちなら最も早い`not_before`、回収待ちの`inflight`だけなら最も早い`lease_until`に1個だけtimerを設定する。`WAITING`なら既存timerより早い期限の場合だけ設定し直し、`DRAINING`ならdrain終了時の再確認へ委ねる。
+2. timer発火時はlock内で`WAITING`から`DRAINING`へ遷移し、lockを解放して、期限切れleaseの回収、due itemのclaim、API送信、ackまたはretry登録を繰り返す。1 batchはURL・タグ各100件までとし、新しい要求をさらに3秒待つために処理途中でtimerを増やさない。
+3. drainがdue itemを取り切ったら、**同じlockを保持したまま**短いDB read transactionで、`pending`の最短`not_before`と未回収`inflight`の最短`lease_until`を再確認する。行があれば`WAITING`へ遷移してその最短時刻へtimerを1個設定し、送信対象がなければ`IDLE`へ遷移する。この確認と状態遷移の間にenqueueの`arm()`を割り込ませない。enqueueが確認前にcommitした場合はこの再確認が拾い、確認後にcommitした場合はlock解放後の`arm()`が`IDLE`なら起動し、`WAITING`なら新しい期限の方が早い場合にtimerを前倒しするため、drain直後の要求を取り残さない。
+4. timer callbackまたはworker loopが予期せぬ例外で終了する場合も、外側の`finally`で同じ終了時再確認を実行し、残件があれば`WAITING`へ戻す。例外は構造化error logへ残す。通常のAPI失敗はこの例外経路ではなく、定義済みのretry状態遷移を使う。ただしshutdownフラグ設定後の`finally`は新しいtimerを作らない。
+
+アプリ起動時はlifespanで**1回だけ**期限切れleaseを回収して`arm()`する。これは常駐polling jobではない。DB commit後から`arm()`までのプロセス停止、timer停止、強制終了はoutbox行を失わず、次回起動時のarmingまたは1分間隔のsupercronic CLIが回収する。graceful shutdownでは新規enqueueの受付を止め、実行中の短いDB transactionを完了させてから、lock内でshutdownフラグを設定して未送信のtimer/workerをcancelする。cancelしたtaskは`finally`が終わるまで短時間awaitするが、API送信完了までは待たず、新しいtimerも作らない。`pending`はそのまま、`inflight`はlease切れ後に再送されるため、Cloudflare API完了とackの間で停止した場合の重複送信は許容する。CLIはプロセス内状態を共有せず、期限切れlease回収と「due itemがなくなるまで」のdrainだけを行う。したがってsupercronicは通常の3秒batchを駆動する主経路ではなく、停止・例外・再起動境界の最大約1分の安全網である。
 
 ### API失敗時のretry・再送・TTL fallback
 
@@ -99,6 +110,8 @@ outboxは`id`、`kind`（`url`または`tag`）、`value`、`state`（`pending|i
 - slug変更、関連付け解除、cascade deleteで変更前後両方のURL・個体タグがoutboxへ入ることをテストする。
 - Cloudflare APIのtimeout、429＋`Retry-After`、5xx、401、`success: false`をstubし、再送、停止、通知、秘密情報非出力を検証する。
 - flusherとCLIを同時起動し、claimにより二重処理しないこと、送信中の同値更新を古いackで消さないこと、claim直後のプロセス停止後にlease切れで再送できることを検証する。
+- fake clockとbarrierを使い、`WAITING`中、`DRAINING`中、終了時DB再確認の直前/直後、`IDLE`中にenqueueして、各itemが3秒batchまたは予約済みretryで送信され、timerが同時に2個作られないことを検証する。
+- 起動時に残る`pending`、期限内/期限切れの`inflight`、timer/worker例外、graceful shutdown、DB commit直後の強制終了を再現し、起動時arming、lease回収、`finally`での再arm、またはsupercronic CLIにより最終的にdrainされることを検証する。shutdown中は新timerが作られず、cancelしたtaskの`finally`完了を待つことも確認する。
 - ランキング再計算失敗時は`ranking`をpurgeせず、成功時だけ`ranking`と`home`をpurgeする。
 - 一括処理の100/101/500/501件境界と、公開前初期投入でAPIを呼ばないことをテストする。
 

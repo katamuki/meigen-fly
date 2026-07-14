@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-14（D9・D12・D15・D16を確定し、関連ADRへ同期）
+> - 更新日: 2026-07-14（D9・D12・D15・D16を確定。D16のGA4境界を公開ページ限定へ改訂）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -88,13 +88,14 @@
 1. **日本語全文検索**（名言・著者）— PGroonga相当を SQLite **FTS5 + アプリ側bigram（方式B・確定）** で再現（第7章・決定記録002）
 2. **匿名いいね**（`quote_likes`：client_uuid + ip_hash、重複抑制）
    - ⚠️ **本サイト唯一の「公開ユーザー書き込み」**。§4・§9の「書き込みはAdminのみ」の**明示的な例外**。専用の書き込みエンドポイントを設け、レート制限・Origin/CSRF対策・多重投票抑制を必須とする（D9）。
-   - `client_uuid` は現行同様 localStorage 管理を基本とし、公開ページにユーザー識別Cookieを載せない（エッジキャッシュと両立させるため）。
+   - `client_uuid`は現行同様localStorage管理とし、アプリ独自の識別Cookieを公開HTMLへ使わない。GA4 cookieはADR 016の同意後だけ許可するが、HTML生成・cache key・cache可否には使わない。
    - ✅ いいね数は名言詳細・一覧のSSR HTMLへ焼き込み、10分TTLで自然更新する。毎PVのGET/断片APIと、いいねごとのキャッシュパージは行わない。POSTした本人のDOMだけ応答で即時更新する（D9/ADR 006）。
 3. **ランキング**（名言/著者/カテゴリ、いいね数・weight による定期再計算）
 4. **OG画像生成**（`/api/og`：名言・著者向け動的画像）
 5. **SEO**（sitemap.xml / robots.txt / 構造化データ / メタタグ / canonical）
 6. **広告**（AdSense 配置）
-7. **管理画面**（`/admin/*`）— CRUD + 一括登録 + ランキング再計算
+7. **アクセス解析**（GA4：同意後の公開フルページと明示的な検索イベントだけ。管理・認証・APIは除外）
+8. **管理画面**（`/admin/*`）— CRUD + 一括登録 + ランキング再計算
 
 ### 3.3 管理画面の対象エンティティ（現行 `src/app/(admin)` より）
 
@@ -222,7 +223,7 @@ meigen-fly/
 | D13 | **`/random` のキャッシュ方針** | 現行20件一覧 + `private, no-store` | ✅**確定（2026-07-13）**: 現行のランダム20件一覧・シャッフル・canonicalを維持し、Cloudflareでも明示Bypassする。個別名言への302は機能・SEO変更になるため採用しない（ADR 010） |
 | D14 | **オリジン保護** | Cloudflare Tunnel + Fly公開入口削除 + exact Host | ✅**確定（2026-07-14）**: Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除。Uvicornはloopbackだけにbindする。AOP・CF IP allowlist・独自secret headerは不採用。管理画面のAccess JWT検証は維持する（ADR 013） |
 | D15 | **検索レート制限** | 1文字検索 + 500ms debounce + アプリ側IP制限 | ✅**確定（2026-07-14）**: 1文字検索を許可し、IME対応の外部静的JSで500ms trailing debounce。アプリを正本に30回/10秒・120回/60秒とする。Cloudflare Freeの1ルールはD9へ優先し、検索ruleは初期配置しない。429では結果を残して待ち時間を案内し、自動再試行しない（ADR 015） |
-| D16 | **CSPとHTMX規約** | 同一origin CSP + eval機能禁止 | ✅**確定（2026-07-14）**: inline JS/style、`hx-on`、event filter、`js:`、swap内scriptを禁止し、`allowEval=false`。nonce/hash、`unsafe-eval`、`hx-csp`は初期不採用。GA4とAdSenseは初期OFFとし、将来有効化時は別ADRで判断する。広告タスクは残す（ADR 016） |
+| D16 | **CSPとHTMX規約** | 基本は同一origin + 公開ページ限定GA4 + eval機能禁止 | ✅**確定（2026-07-14）**: inline JS/style、`hx-on`、event filter、`js:`、swap内scriptを禁止し、`allowEval=false`。GA4は明示同意後の公開フルページと正規化済み検索イベントだけに限定し、管理・認証・API・HTMX断片を除外する。AdSense、nonce/hash、`unsafe-eval`、`hx-csp`は初期不採用（ADR 016） |
 | D17 | **日時のSQLite保存形式** | 固定長UTC `TEXT` | ✅**確定（2026-07-13）**: `YYYY-MM-DDTHH:MM:SS.ffffffZ`へ正規化し、明示serializer/parserを使う。暦日・歴史日付は別規則（ADR 011） |
 
 > 残る未決事項はD5（OG画像生成）とD8（デザイン刷新範囲）。D9・D12・D15・D16は対応ADRを正本として確定済みである。
@@ -254,6 +255,7 @@ meigen-fly/
 - [ ] SEO（sitemap/robots/構造化データ/canonical）
 - [ ] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + URL契約表に基づく正規化）
 - [ ] OG画像（D5）
+- [ ] GA4（同意UI、Privacy Policy、公開route限定page view、検索イベント、CSP/通信検証）
 - [ ] 広告配置
 
 ### フェーズ4: 管理画面
@@ -312,6 +314,7 @@ meigen-fly/
 | `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
+| `GA_MEASUREMENT_ID` | 同意後の公開フルページ限定GA4測定ID。未設定時はAnalyticsを完全無効化 |
 | `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
 | `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |

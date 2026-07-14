@@ -110,8 +110,8 @@ async def cache_headers(request, call_next):
 ### 4.3 Vary ヘッダー
 
 - 言語切替やABテストを行わないなら `Vary` は付けない（キャッシュヒット率が下がる）
-- 管理者認証CookieはCloudflare Accessだけが発行し、アプリ独自のログインCookieは発行しない（公開ページにもユーザー識別Cookieを付けない）
-- 匿名いいねの `client_uuid` は localStorage 管理を基本とし、公開ページに識別Cookieを載せない
+- 管理者認証CookieはCloudflare Accessだけが発行し、アプリ独自のログインCookieは発行しない。公開HTMLの内容・cache key・cache可否をアプリの利用者識別Cookieで変えない
+- 匿名いいねの`client_uuid`はlocalStorage管理とし、Cookieへ移さない。GA4のfirst-party cookieはADR 016の同意後に限って許可するが、サーバーは参照せず`Vary: Cookie`も付けない
 
 ### 4.4 検索ページ
 
@@ -270,6 +270,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
 | `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
+| `GA_MEASUREMENT_ID` | 公開フルページ限定GA4の測定ID。未設定時はAnalyticsコード・追加CSP・Google通信を全て無効化 |
 | `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
 | `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
@@ -280,7 +281,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - Admin: Cloudflare Access + 外部IdP + Access independent MFA + FastAPIでのAccess JWT検証 + `admin_users`認可。接続元IP固定は前提にしない
 - CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
 - Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
-- CSPはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしの同一オリジン構成を基本とする。GA4とAdSenseは初期OFFとし、Google originや計測・広告用設定を先行追加しない（[ADR 016](016-csp-htmx-rules.md)）
+- CSPはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしを基本とする。GA4は同意後の公開フルページだけに非広告用originを追加し、管理・認証・API・HTMX断片・error responseは同一オリジンCSPを維持する。AdSenseは初期OFFとする（[ADR 016](016-csp-htmx-rules.md)）
 - HTMXは`allowEval=false`、`allowScriptTags=false`とし、`hx-on`、イベントフィルタ、`js:`/`javascript:`値、断片内scriptを禁止する。`hx-csp`は初期採用しない（[ADR 016](016-csp-htmx-rules.md)）
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`

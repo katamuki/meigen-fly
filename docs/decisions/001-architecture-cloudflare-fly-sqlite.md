@@ -1,4 +1,4 @@
-# meigensyu.com 作り変え 構成書
+# www.meigensyu.com 作り変え 構成書
 
 ## 1. 全体構成
 
@@ -21,6 +21,7 @@
 - **DB**: SQLite。書き込みは**原則 Admin のみ**（例外は匿名いいねの専用書き込み経路）、読み取り中心
 - **CDN**: Cloudflare（無料プランで十分）
 - **ホスティング**: Fly.io（東京リージョン `nrt` 推奨）
+- **公開オリジン**: `https://www.meigensyu.com/`
 - **バックアップ**: 毎日03:00 JSTに整合したSQLiteバックアップをR2へ保存。Fly Volume snapshotは二次復旧手段
 
 ## 2. キャッシュ戦略の基本方針
@@ -48,7 +49,7 @@
 | `/api/og?*`（OG画像） | `public, s-maxage=2592000, max-age=86400` | 30日 / 1日 |
 | **`/random`** | `private, no-store` | 現行20件一覧を維持し、ランダム固定化を防ぐ |
 | **`/search`** | `private, no-store` | キャッシュしない |
-| **`/admin/*`** | `private, no-store` | キャッシュしない |
+| **`/admin`, `/admin/*`, `/login`** | `private, no-store` | 管理認証フローをキャッシュしない |
 | **`POST /api/likes/*`** | `private, no-store` | キャッシュしない |
 | `/static/*`（CSS/JS/画像） | `public, max-age=31536000, immutable` | 1年（ファイル名にハッシュ付与） |
 
@@ -78,8 +79,11 @@ _SORTED_RULES = sorted(CACHE_RULES.items(), key=lambda kv: len(kv[0]), reverse=T
 async def cache_headers(request, call_next):
     response = await call_next(request)
     path = request.url.path
-    # /admin, /search は必ず no-store
-    if path.startswith(("/admin", "/search")):
+    # /adminとその配下、/searchとその配下、/loginは必ずno-store
+    if (
+        path in ("/admin", "/search", "/login")
+        or path.startswith(("/admin/", "/search/"))
+    ):
         response.headers["Cache-Control"] = "private, no-store"
         return response
     # /random は現行のランダム一覧を維持し、常にキャッシュ対象外にする。
@@ -105,7 +109,7 @@ async def cache_headers(request, call_next):
 ### 4.3 Vary ヘッダー
 
 - 言語切替やABテストを行わないなら `Vary` は付けない（キャッシュヒット率が下がる）
-- Cookie でセッションを持つのは Admin のみに限定する（公開ページに Cookie を付けない）
+- 管理者認証CookieはCloudflare Accessだけが発行し、アプリ独自のログインCookieは発行しない（公開ページにもユーザー識別Cookieを付けない）
 - 匿名いいねの `client_uuid` は localStorage 管理を基本とし、公開ページに識別Cookieを載せない
 
 ### 4.4 検索ページ
@@ -116,10 +120,11 @@ async def cache_headers(request, call_next):
 
 ### 4.5 Admin ページ
 
-- `/admin/*` は Basic認証 or セッション認証
-- Cookie 必須 → キャッシュ不可
-- CSRF 対策必須
-- CloudflareのIP制限だけに依存しない。`*.fly.dev` やオリジンIP直撃でWAF/IP制限を迂回されないよう、Authenticated Origin Pulls、Hostヘッダ検証、Cloudflare IPレンジ検証のいずれかを組み合わせる
+- `/admin`とその全配下はCloudflare Access + 外部IdP + Access independent MFAで保護し、管理者emailを完全一致で許可する。接続元IP固定は前提にしない
+- FastAPIでも`Cf-Access-Jwt-Assertion`の署名・`iss`・`aud`・`exp`・`nbf`・`iat`・`type`・`sub`・emailを検証し、`admin_users`のrole・有効状態で認可する。Basic認証とアプリ独自パスワードは使わない（[ADR 012](012-admin-auth-cloudflare-access.md)）
+- Access session cookieを伴うためキャッシュ不可。`/admin`とその全配下、および`/login`は`private, no-store`とする
+- 状態変更にはCSRF token、環境ごとの`PUBLIC_ORIGIN`との完全一致`Origin`、Fetch Metadata検証を必須とする。本番の`PUBLIC_ORIGIN`は`https://www.meigensyu.com`に固定する
+- 管理画面のJWT検証とは別に、匿名いいね等を含むサイト全体のCloudflare迂回対策をD14で確定する
 
 ### 4.6 いいね数の表示
 
@@ -280,7 +285,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - **Cache Rules**（ダッシュボードから設定。**Cache Rules は last matching rule wins**）:
   1. 公開HTMLパス（`/`, `/quotes*`, `/authors*`, `/categories*`, `/characters*`, `/professions*`, `/sources*`, `/ranking*`, `/about` 等）→ **Cache eligibility: Eligible for cache（＝Cache Everything 相当）**、Edge TTL は **「Use cache-control header if present」**（オリジンの `s-maxage` を尊重）
   2. `/static/*` → Eligible for cache, Edge TTL 1 month
-  3. `/admin/*`・`/search*`・`/random`・`/api/likes/*` → **Bypass cache**（Cookie/動的/公開書き込みのため必ず除外）
+  3. `/admin`・`/admin/*`・`/login`・`/search*`・`/random`・`/api/likes/*` → **Bypass cache**（Cookie/動的/公開書き込みのため必ず除外）
 - ⚠️ **重要**: Cache Rules は複数マッチ時に最後の一致ルールが勝つ。旧Page Rulesの「先勝ち」と逆なので、Bypassルールは公開HTMLのEligibleルールより**後（下）**に配置する。
 - ⚠️ **重要**: **Cloudflare はデフォルトで HTML/JSON をキャッシュしない**（拡張子ベースでCSS/JS/画像等のみキャッシュ）。オリジンが `Cache-Control: public, s-maxage=...` を返しても、**Cache Rule で明示的に「Eligible for cache」を指定しない限り公開HTMLはキャッシュされない**。SSRのHTMLをエッジキャッシュする本構成では上記1の公開HTML Cache Rule が必須。
   - 参照: [Default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
@@ -289,10 +294,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - **WAF**:
   - Bot Fight Mode ON
   - Rate limiting: `/search` は debounce/最小文字数とセットで閾値を決める（例: 60req/min固定だとインクリメンタル検索で正規ユーザーに当たり得る）
-- **Firewall Rules**:
-  - `/admin/*` は特定IPのみ許可（可能なら）
-- **Origin protection**:
-  - Authenticated Origin Pullsを第一候補に、オリジン直撃を拒否する。採用できない場合もHostヘッダ検証またはCloudflare IPレンジ検証を入れる
+- **Admin access**: 接続元IPは固定できないため、IP allowlistは使わない。Cloudflare Access + 外部IdP + Access independent MFAとFastAPIでのAccess JWT検証を使用する（ADR 012）
+- **Origin protection（D14・未決）**: Authenticated Origin Pullsを第一候補とし、Hostヘッダ検証、Cloudflare IPレンジ検証を候補に、サイト全体のオリジン直撃対策を別途確定する
 
 ## 9. デプロイ・運用
 
@@ -310,10 +313,11 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | 変数名 | 用途 |
 |---|---|
 | `DATABASE_URL` | SQLite絶対パス（例: `sqlite:////data/app.db`） |
+| `PUBLIC_ORIGIN` | 環境ごとの公開オリジン。本番は`https://www.meigensyu.com`（末尾slashなし） |
 | `CF_ZONE_ID` | Cloudflare Zone ID |
 | `CF_API_TOKEN` | Cloudflare API Token（`Cache Purge` 権限のみ） |
-| `ADMIN_USER` / `ADMIN_PASS` | Admin 認証 |
-| `SECRET_KEY` | セッション署名鍵 |
+| `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
+| `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
 | `RANKING_IP_HASH_SALT` | 匿名いいねの `ip_hash` 生成 |
 | `NEXT_PUBLIC_GA_ID` | GA4（採用時） |
 | `NEXT_PUBLIC_ADSENSE_PUBLISHER_ID` | AdSense（採用時） |
@@ -323,9 +327,9 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 
 ## 11. セキュリティ
 
-- Admin: Basic認証 or セッション + IP制限
-- CSRF トークン（Admin フォーム）
-- `SECURE`, `HTTPONLY`, `SameSite=Lax` の Cookie
+- Admin: Cloudflare Access + 外部IdP + Access independent MFA + FastAPIでのAccess JWT検証 + `admin_users`認可。接続元IP固定は前提にしない
+- CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
+- Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
 - CSP ヘッダー（インラインJS禁止）
 - HTMX利用時は `hx-on`、イベントフィルタ、`js:`/`javascript:` 値を原則禁止し、`unsafe-eval` なしのCSPと整合させる。必要な場合は hx-csp 等を検討する
 - `X-Content-Type-Options: nosniff`
@@ -354,7 +358,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 
 - [ ] `/quotes/q1342`、`/quotes`、`/quotes/page/2`、`/quotes/latest`、`/quotes/latest/page/2` に `Cache-Control: public, s-maxage=600, max-age=60` が付いている
 - [ ] `/search?q=test` に `Cache-Control: private, no-store` が付いている
-- [ ] `/admin/` に `Cache-Control: private, no-store` が付いている
+- [ ] `/admin`とその全配下、および`/login`に `Cache-Control: private, no-store` が付き、CloudflareでもBypassされる
 - [ ] `POST /api/likes/q1342` が `private, no-store` かつCloudflare Bypassで、GETは405を返す
 - [ ] `/random` が現行どおり20件のランダム一覧を返し、`private, no-store`かつCloudflare Bypassで、連続取得時に結果がキャッシュ固定化しない
 - [ ] `curl -I` で 2回目に `cf-cache-status: HIT` が返る（公開ページ）

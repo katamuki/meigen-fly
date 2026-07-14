@@ -72,6 +72,27 @@ upgrade-insecure-requests
 
 初期リリースでGA4を利用する環境だけ、サーバー設定`GA_MEASUREMENT_ID`へ測定IDを設定する。値がない環境では無効とし、別のboolean flagを設けない。GTMコンテナは使わずGA4タグを直接読み込む。外部タグの初期化コードはインラインにせず、自サイトの静的JSへ置く。測定IDは静的JSが安全な`data-*`値またはmeta値から取得する。
 
+GA4タグは、`GA_MEASUREMENT_ID`が設定済みで、かつ次の初期allowlistにroute matchした**完全なページレスポンス**だけへ描画する。文字列のprefix一致ではなくサーバーのroute名で判定し、placeholderはそのrouteで検証・生成済みのpath segmentだけを表す。
+
+- `/`
+- `/quotes`、`/quotes/page/{n}`、`/quotes/latest`、`/quotes/latest/page/{n}`、`/quotes/{slugOrQid}`
+- `/authors`、`/authors/{slug}`、`/authors/{slug}/page/{n}`、`/authors/places/{countrySlug}`
+- `/categories`、`/categories/{slug}`、`/categories/{slug}/page/{n}`
+- `/characters`、`/characters/{slug}`、`/characters/{slug}/page/{n}`
+- `/professions`、`/professions/{slug}`、`/professions/{slug}/quotes`
+- `/sources`、`/sources/{slug}`、`/sources/{slug}/page/{n}`
+- `/ranking`、`/random`、`/about`、`/privacy`、`/terms`
+
+この一覧以外の未知・新規routeは既定で計測せず、公開routeだからという理由で自動的に対象へ加えない。少なくとも次ではタグ、測定IDを渡すmeta / `data-*`値、GA4初期化用コードを一切描画しない。
+
+- `/search`（queryの有無を問わない）、`/admin`とその配下、`/login`、`/403`
+- `/api/*`（いいね、CSP report、OG画像等を含む）、`/healthz`
+- HTMX断片、error response、およびHTML以外のレスポンス
+
+初期化は`gtag('config', GA_MEASUREMENT_ID, {send_page_view: false})`相当として自動page viewを無効にする。その後、allowlistに一致した公開フルページでだけ、静的JSから明示的な`page_view`を1回送る。`page_location`はraw request URLから作らず、信頼するサーバー設定`PUBLIC_ORIGIN`と、サーバーがroute match結果から正規化・生成したpathだけを結合したcanonical相当のURLとする。query stringとfragmentは常に除去する。`page_path`も同じ正規化済みpathだけを明示的に設定し、`page_referrer`は初期リリースでは空にしてブラウザー既定値を送らない。raw query parameter、`document.referrer`、ブラウザーの`location.search` / `location.hash`からanalytics fieldを生成しない。GA4データストリームの拡張計測も初期は無効にし、サイト内検索等の自動event収集を有効化しない。
+
+HTMX swapではタグの再初期化もpage view送信も行わず、検索用custom eventを含むcustom eventからGA4 eventを発火しない。初期リリースではpage view以外のcustom event / custom dimensionを設けず、user ID、`client_uuid`、`ip_hash`、検索語、管理者の識別子・role、いいねAPI pathに含まれる`quote_id`等を送らない。新しい計測routeまたはeventを追加するときは、「公開してよいpathか」「queryや識別子を含まないか」を本ADRとテストへ追加してからallowlistを広げる。
+
 GA4を有効にする環境では基本CSPへ次だけを追加する。
 
 ```text
@@ -134,7 +155,9 @@ Report-OnlyはHTTPヘッダーで配信する（metaでは配信できない）�
 - 全HTMLレスポンスで環境に対応したCSPヘッダーが1つだけ返り、HTMX断片・error responseにも基本ポリシーが付くことをテストする。画像等の非HTMLレスポンスへ同じHTMLポリシーを無意味に複製しない。
 - template / static sourceを検査し、`hx-on`、イベントフィルタ、`hx-vals` / `hx-headers`の`js:` / `javascript:`、実行可能なインラインscript、DOMイベント属性、`javascript:` URL、HTMX断片内scriptを検出したらCIを失敗させる。唯一のinline `script`例外は、完全HTML文書内の`<script type="application/ld+json">`で、安全なJSON serializerを通した構造化データだけを内容とし、`src`、nonce、event属性、実行可能なMIME typeを持たないものとする。HTMX断片ではJSON-LDも禁止する。この例外と、通常のinline scriptが拒否されることをCI fixtureで検証し、JSON中の通常文字列等の誤検知は限定的な明示除外にする。
 - browser testで`htmx.config.allowEval === false`、`allowScriptTags === false`、`selfRequestsOnly === true`を確認し、禁止した`hx-on` / event filter / `js:`が動作せず、通常の検索debounce、いいね、swap後の静的listenerが動くことを確認する。
-- GA4無効時はGoogle originがCSPにもHTMLにもないことを確認する。有効にする本番構成ではnetwork logで必要な送信だけが成功し、query、管理画面、いいね識別子を送らないことを確認する。
+- GA4無効時はGoogle originがCSPにもHTMLにもなく、GA4用コード、タグ、測定ID用meta / `data-*`値も描画されないことを確認する。
+- GA4有効時も、`/search`、`/admin/*`、`/login`、`/403`、`/api/*`、`/healthz`、HTMX断片、error responseのHTMLにGA4タグと測定IDがないことをroute testで確認する。allowlist対象の公開フルページではタグが描画され、`config`時の`send_page_view`が`false`であり、自動送信を含む全page viewの総数がちょうど1回になることを確認する。
+- browser testのnetwork logでGA4 payloadを検査し、`page_location`が期待する`PUBLIC_ORIGIN + 正規化済みallowlist path`と完全一致し、Host headerやraw request URLに由来しないこと、および`page_path`が同じpathと完全一致することを確認する。query string、fragment、除外routeがなく、`page_referrer`が空で、検索語、管理者情報、`client_uuid`、`ip_hash`、いいねの`quote_id`等が含まれないことも確認する。HTMX swapと検索custom eventでは追加のpage view / custom eventが送られないことも確認する。
 - AdSenseとTurnstileのコード・frame・許可先が出力されないことを確認する。
 - stagingと本番のReport-Only期間に主要導線を確認してからEnforceへ移す。
 

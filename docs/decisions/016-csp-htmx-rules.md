@@ -12,7 +12,7 @@
 
 HTMXの現行安定版ドキュメントでは、`allowEval=false`にするとイベントフィルタ、`hx-on:*`、`hx-vals` / `hx-headers`の`js:`評価を無効化でき、`allowScriptTags=false`にすると取得したHTML内の`script`処理を無効化できる。`hx-csp`は現行安定版の公式extension一覧にはなく、HTMX 4のbetaサイト（確認時点では`4.0.0-beta5`）にだけ掲載されている。初期リリースでbeta版と全HTMX要素への`hx-nonce`付与を持ち込まない。
 
-Google Analytics 4（GA4）は必要な接続先を公式に列挙している。一方、AdSenseの公式CSP手順は、変動する配信ドメインの固定allowlistをサポートせず、nonce、`strict-dynamic`、`unsafe-eval`等を含むstrict CSPだけをサポートする。通常ページと同じ安全性・キャッシュ方式のままAdSenseだけを追加できるとは扱わない。
+GA4を初期導入すると、CSP許可先だけでなく、cookie / client ID、同意、privacy policy、URL・referrerを含む自動イベント、保持期間を一体で決める必要がある。個人開発の初期リリースでは、この計測基盤を部分的に導入するより無効のままにする方が運用負担と意図しない情報送信を抑えられる。一方、AdSenseの公式CSP手順は、変動する配信ドメインの固定allowlistをサポートせず、nonce、`strict-dynamic`、`unsafe-eval`等を含むstrict CSPだけをサポートする。通常ページと同じ安全性・キャッシュ方式のままAdSenseだけを追加できるとは扱わない。
 
 ## 決定
 
@@ -68,40 +68,20 @@ upgrade-insecure-requests
 
 `hx-csp`は採用しない。理由は、確認時点でHTMX 4 beta専用であり、安定版の保守対象として判断できず、全要素のnonce付与とTrusted Typesまで初期導入する運用負担が大きいためである。HTMX 4の安定版へ更新する際に、安定版extensionとして残っているか、移行コストと実際の脅威に見合うかを再評価する。
 
-### 3. GA4の条件付き許可
+### 3. GA4は初期OFF
 
-初期リリースでGA4を利用する環境だけ、サーバー設定`GA_MEASUREMENT_ID`へ測定IDを設定する。値がない環境では無効とし、別のboolean flagを設けない。GTMコンテナは使わずGA4タグを直接読み込む。外部タグの初期化コードはインラインにせず、自サイトの静的JSへ置く。測定IDは静的JSが安全な`data-*`値またはmeta値から取得する。
+**初期リリースでは、開発・テスト・staging・本番の全環境でGA4を無効とする。** 環境変数や設定値の有無で有効化できる実装は設けず、GA4 / GTMのscript、測定ID、初期化用JS、測定IDを渡すmeta / `data-*`値、`_ga`等のGoogle Analytics cookie、Googleへのnetwork requestを一切生成しない。基本CSPにもGoogle originを追加しない。この決定は、将来の別ADRで明示的に変更するまで全routeと全responseに適用する。
 
-GA4タグは、`GA_MEASUREMENT_ID`が設定済みで、かつ次の初期allowlistにroute matchした**完全なページレスポンス**だけへ描画する。文字列のprefix一致ではなくサーバーのroute名で判定し、placeholderはそのrouteで検証・生成済みのpath segmentだけを表す。
+GA4を将来有効化する場合は、タグや設定だけを先行実装せず、少なくとも次を別ADRで決定してから、実装・privacy policy（必要ならcookie policy）・自動テストを同時に更新する。
 
-- `/`
-- `/quotes`、`/quotes/page/{n}`、`/quotes/latest`、`/quotes/latest/page/{n}`、`/quotes/{slugOrQid}`
-- `/authors`、`/authors/{slug}`、`/authors/{slug}/page/{n}`、`/authors/places/{countrySlug}`
-- `/categories`、`/categories/{slug}`、`/categories/{slug}/page/{n}`
-- `/characters`、`/characters/{slug}`、`/characters/{slug}/page/{n}`
-- `/professions`、`/professions/{slug}`、`/professions/{slug}/quotes`
-- `/sources`、`/sources/{slug}`、`/sources/{slug}/page/{n}`
-- `/ranking`、`/random`、`/about`、`/privacy`、`/terms`
+- cookie / client IDを利用するか、同意取得とConsent Modeをどう扱うか、およびprivacy policy / cookie policyへの記載
+- `page_location`、`page_referrer`等のraw値を含む自動イベントと拡張計測をどこまで無効化するか
+- 計測対象routeと除外対象（少なくとも検索query、`/search`、`/admin/*`、`/login`、`/api/*`、HTMX断片、error response）
+- raw request URL、query string、fragment、ブラウザーのlocation / referrerを送らず、サーバーが検証・生成したcanonicalのpath-only payloadだけを送る契約
+- event・user property・データ保持期間、および検索語、管理者情報、`client_uuid`、`ip_hash`、`quote_id`等を送らない境界
+- CSPのdirective / origin allowlistを、採用するGA4機能の公式要件とbrowserの実network trafficの双方で検証する手順
 
-この一覧以外の未知・新規routeは既定で計測せず、公開routeだからという理由で自動的に対象へ加えない。少なくとも次ではタグ、測定IDを渡すmeta / `data-*`値、GA4初期化用コードを一切描画しない。
-
-- `/search`（queryの有無を問わない）、`/admin`とその配下、`/login`、`/403`
-- `/api/*`（いいね、CSP report、OG画像等を含む）、`/healthz`
-- HTMX断片、error response、およびHTML以外のレスポンス
-
-初期化は`gtag('config', GA_MEASUREMENT_ID, {send_page_view: false})`相当として自動page viewを無効にする。その後、allowlistに一致した公開フルページでだけ、静的JSから明示的な`page_view`を1回送る。`page_location`はraw request URLから作らず、信頼するサーバー設定`PUBLIC_ORIGIN`と、サーバーがroute match結果から正規化・生成したpathだけを結合したcanonical相当のURLとする。query stringとfragmentは常に除去する。`page_path`も同じ正規化済みpathだけを明示的に設定し、`page_referrer`は初期リリースでは空にしてブラウザー既定値を送らない。raw query parameter、`document.referrer`、ブラウザーの`location.search` / `location.hash`からanalytics fieldを生成しない。GA4データストリームの拡張計測も初期は無効にし、サイト内検索等の自動event収集を有効化しない。
-
-HTMX swapではタグの再初期化もpage view送信も行わず、検索用custom eventを含むcustom eventからGA4 eventを発火しない。初期リリースではpage view以外のcustom event / custom dimensionを設けず、user ID、`client_uuid`、`ip_hash`、検索語、管理者の識別子・role、いいねAPI pathに含まれる`quote_id`等を送らない。新しい計測routeまたはeventを追加するときは、「公開してよいpathか」「queryや識別子を含まないか」を本ADRとテストへ追加してからallowlistを広げる。
-
-GA4を有効にする環境では基本CSPへ次だけを追加する。
-
-```text
-script-src  'self' https://*.googletagmanager.com;
-img-src     'self' data: https://*.google-analytics.com https://*.googletagmanager.com;
-connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com;
-```
-
-GA4を使わない開発・テスト環境、または本番で無効化した場合は、タグ自体をHTMLへ出さず、上記originもCSPへ出さない。Google Ads連携、Advertising Features / Google Signals、GTM Preview、Custom JavaScript Variableは初期スコープ外とし、`doubleclick.net`、`google.com`、`pagead2.googlesyndication.com`、`frame-src https://www.googletagmanager.com`、`unsafe-eval`を先回りで許可しない。機能を有効化する時点でGoogle公式表と実際の通信を再確認する。
+この将来ADRが承認されるまでは、Analytics用の設定やGoogle originを「後で使うため」に先行追加しない。
 
 ### 4. AdSenseとその他の外部サービス
 
@@ -132,16 +112,16 @@ OG画像生成エンドポイント`/api/og?...`は同一オリジンの画像�
 ただし、次はCSPだけでは防げない。
 
 - 自サイト配下の許可済みJavaScript自体の脆弱性や改ざん
-- 許可済みGA4 originへ、正規アプリJSが誤って機密情報を送ること
+- 将来、外部計測originを許可した場合に、正規アプリJSが誤って機密情報を送ること
 - HTML属性やURLのescape不備による、スクリプト実行を伴わない表示・遷移の改ざん
 - サーバー側の認可、CSRF、SQL injection、キャッシュキー混同
 
-静的assetは内容ハッシュ付きファイル名で配信し、依存更新時にHTMXの変更履歴とCSP関連設定を確認する。検索query、Access JWT、CSRF token、IPや`ip_hash`等をGA4 eventやCSP違反ログへ送らない。
+静的assetは内容ハッシュ付きファイル名で配信し、依存更新時にHTMXの変更履歴とCSP関連設定を確認する。検索query、Access JWT、CSRF token、IPや`ip_hash`等をCSP違反ログへ保存しない。
 
 ## 段階導入と違反監視
 
 1. stagingで`Content-Security-Policy-Report-Only`を有効にし、主要route（トップ、一覧、詳細、検索、いいね、管理画面、OG）を手動またはE2Eで確認する。
-2. 本番でも48時間を目安にReport-Onlyで観測する。GA4有効/無効の両構成を別々に確認し、違反を見てoriginを無条件に追加せず、必要なresourceか、バグ・browser extension・攻撃試行かを分類する。
+2. 本番でも48時間を目安にReport-Onlyで観測する。違反を見てoriginを無条件に追加せず、必要なresourceか、バグ・browser extension・攻撃試行かを分類する。
 3. 必要な修正後、同じポリシーを`Content-Security-Policy`へ切り替える。大きな外部タグ変更時だけ、現行Enforceを維持したまま変更候補をReport-Onlyで併送する。
 
 Report-OnlyはHTTPヘッダーで配信する（metaでは配信できない）。`Reporting-Endpoints: csp="<PUBLIC_ORIGIN>/api/csp-report"`とCSPの`report-to csp`を使い、移行中は旧browser向けの`report-uri /api/csp-report`も併記する。`PUBLIC_ORIGIN`はADR 012・013と同じ環境別の完全一致origin（本番は`https://www.meigensyu.com`、stagingはその検証host）であり、reporting endpointは常に基本CSPの`connect-src 'self'`内に収まる。
@@ -155,35 +135,33 @@ Report-OnlyはHTTPヘッダーで配信する（metaでは配信できない）�
 - 全HTMLレスポンスで環境に対応したCSPヘッダーが1つだけ返り、HTMX断片・error responseにも基本ポリシーが付くことをテストする。画像等の非HTMLレスポンスへ同じHTMLポリシーを無意味に複製しない。
 - template / static sourceを検査し、`hx-on`、イベントフィルタ、`hx-vals` / `hx-headers`の`js:` / `javascript:`、実行可能なインラインscript、DOMイベント属性、`javascript:` URL、HTMX断片内scriptを検出したらCIを失敗させる。唯一のinline `script`例外は、完全HTML文書内の`<script type="application/ld+json">`で、安全なJSON serializerを通した構造化データだけを内容とし、`src`、nonce、event属性、実行可能なMIME typeを持たないものとする。HTMX断片ではJSON-LDも禁止する。この例外と、通常のinline scriptが拒否されることをCI fixtureで検証し、JSON中の通常文字列等の誤検知は限定的な明示除外にする。
 - browser testで`htmx.config.allowEval === false`、`allowScriptTags === false`、`selfRequestsOnly === true`を確認し、禁止した`hx-on` / event filter / `js:`が動作せず、通常の検索debounce、いいね、swap後の静的listenerが動くことを確認する。
-- GA4無効時はGoogle originがCSPにもHTMLにもなく、GA4用コード、タグ、測定ID用meta / `data-*`値も描画されないことを確認する。
-- GA4有効時も、`/search`、`/admin/*`、`/login`、`/403`、`/api/*`、`/healthz`、HTMX断片、error responseのHTMLにGA4タグと測定IDがないことをroute testで確認する。allowlist対象の公開フルページではタグが描画され、`config`時の`send_page_view`が`false`であり、自動送信を含む全page viewの総数がちょうど1回になることを確認する。
-- browser testのnetwork logでGA4 payloadを検査し、`page_location`が期待する`PUBLIC_ORIGIN + 正規化済みallowlist path`と完全一致し、Host headerやraw request URLに由来しないこと、および`page_path`が同じpathと完全一致することを確認する。query string、fragment、除外routeがなく、`page_referrer`が空で、検索語、管理者情報、`client_uuid`、`ip_hash`、いいねの`quote_id`等が含まれないことも確認する。HTMX swapと検索custom eventでは追加のpage view / custom eventが送られないことも確認する。
+- 全route（公開ページ、検索、管理画面、API、HTMX断片、error responseを含む）で、GA4 / GTM script、測定ID、Analytics用meta / `data-*`値、初期化用JS、`_ga`等のGoogle Analytics cookieが存在せず、Google originへのnetwork requestが発生しないことをroute testとbrowser testで確認する。CSPにもGoogle originがないことを確認する。
 - AdSenseとTurnstileのコード・frame・許可先が出力されないことを確認する。
 - stagingと本番のReport-Only期間に主要導線を確認してからEnforceへ移す。
 
 ### 導入後または機能追加時の推奨確認
 
 - CSPの負のE2Eとして、nonceなしinline script、event属性、`eval()`、外部script、cross-origin `fetch`、swap内scriptがブロックされることを確認する。
-- GA4を有効にした場合はAnalytics DebugViewでもevent内容を確認する。
 - OG URLをSNS debugger相当または直接GETで確認し、CSPへSNS hostを足さずに取得できることを確認する。
 
 ## 既存文書との同期（2026-07-14完了）
 
 本ADRをD16の正本とする。2026-07-14に所有元の文書を次のとおり同期した。今後方針を変える場合も同じ文書を同時に更新する。
 
-- `docs/project-plan.md`のD16を確定済みとし、`hx-on`禁止、`allowEval=false`、本ADR参照へ統一した。環境変数はサーバー設定`GA_MEASUREMENT_ID`へ変更し、初期OFFのAdSense IDを外した。フェーズ3の広告配置は未完タスクとして残した。
-- `docs/decisions/001-architecture-cloudflare-fly-sqlite.md`のCSP/HTMX規約と環境変数名を本ADRへ同期した。
+- `docs/project-plan.md`のD16を確定済みとし、`hx-on`禁止、`allowEval=false`、GA4 / AdSense初期OFF、本ADR参照へ統一した。初期環境変数からAnalytics・AdSense用IDを外し、フェーズ3の広告配置は未完タスクとして残した。
+- `docs/decisions/001-architecture-cloudflare-fly-sqlite.md`のCSP/HTMX規約と初期環境変数を本ADRへ同期した。
 
 ## 影響
 
 - インライン処理を静的JSへ集約するため、挙動の検索・テスト・依存更新が容易になる。
 - `hx-on`の短い記述やevent filterは使えないが、本サイトのHTMX利用範囲では少量のevent listenerで代替できる。
 - nonce/hashの生成・テンプレート注入・キャッシュ整合を初期実装から除外できる。
+- Analyticsのcookie、同意、privacy policy、自動イベント制御を不完全なまま初期実装へ持ち込まずに済む。アクセス解析は必要性が具体化した時点で別ADRとして判断する。
 - AdSense収益化は初期リリース後の明示的な再判断となる。広告を急いで有効化するためにサイト全体のCSPを暗黙に弱めない。
 
 ## 再検討条件
 
-- AdSense、GTM、GA4 Advertising Features、Turnstile、外部widgetを有効化するとき
+- GA4 / GTM、AdSense、Turnstile、外部widgetを有効化するとき
 - HTMX 4安定版へ更新し、`hx-csp`が安定版の保守対象になったとき
 - 信頼できないHTMLをサニタイズして表示する要件、cross-origin HTMX、iframe埋め込みが生じたとき
 - CSP違反で基本機能が維持できず、静的JSへの移動では解決できないとき
@@ -195,7 +173,8 @@ Report-OnlyはHTTPヘッダーで配信する（metaでは配信できない）�
 - **`unsafe-eval`を通常許可**: HTMXのeval依存機能は静的JSで代替でき、文字列からのコード生成をサイト全体で許可する理由がないため不採用。
 - **全ページnonce**: Cloudflare HTMLキャッシュとの整合、nonce再利用、テンプレート運用のコストが現時点の機能に見合わないため不採用。
 - **`hx-csp`を先行採用**: HTMX 4 betaに依存し、全要素へのnonce付与等が必要になるため不採用。
-- **Google系originの先行allowlist**: 未使用環境の攻撃面を増やし、Google Ads用originはGA4基本計測には不要なため不採用。
+- **GA4の環境変数による条件付き有効化**: cookie / client ID、同意、privacy policy、自動イベント、保持期間の設計を伴わない部分導入になるため、初期リリースでは不採用。
+- **Google系originの先行allowlist**: 未使用環境の攻撃面を増やすため不採用。将来の別ADRで実通信を確認するまで追加しない。
 
 ## 公式資料（2026-07-14確認）
 

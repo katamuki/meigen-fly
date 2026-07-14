@@ -272,7 +272,6 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
 | `RANKING_IP_HASH_SALT` / `RANKING_IP_HASH_SALT_GENERATION` | 匿名いいねのcurrent秘密鍵（32 bytes以上）とその不変な世代ID |
 | `RANKING_IP_HASH_SALT_PREVIOUS` / `RANKING_IP_HASH_SALT_PREVIOUS_GENERATION` | rotation後24時間だけ照合するprevious秘密鍵と世代ID。通常時は未設定 |
-| `GA_MEASUREMENT_ID` | GA4（設定した環境だけ有効。未設定時はCSP許可先も出さない） |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
 
@@ -281,7 +280,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - Admin: Cloudflare Access + 外部IdP + Access independent MFA + FastAPIでのAccess JWT検証 + `admin_users`認可。接続元IP固定は前提にしない
 - CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
 - Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
-- CSPはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしの同一オリジン構成を基本とする。GA4は`GA_MEASUREMENT_ID`設定時だけ必要な許可先を追加し、AdSenseは初期OFFとする（[ADR 016](016-csp-htmx-rules.md)）
+- CSPはインラインJavaScript/style、nonce/hash、`unsafe-eval`なしの同一オリジン構成を基本とする。GA4とAdSenseは初期OFFとし、Google originや計測・広告用設定を先行追加しない（[ADR 016](016-csp-htmx-rules.md)）
 - HTMXは`allowEval=false`、`allowScriptTags=false`とし、`hx-on`、イベントフィルタ、`js:`/`javascript:`値、断片内scriptを禁止する。`hx-csp`は初期採用しない（[ADR 016](016-csp-htmx-rules.md)）
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`

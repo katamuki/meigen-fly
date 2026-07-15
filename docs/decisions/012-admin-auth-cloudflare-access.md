@@ -17,7 +17,7 @@
 - 初期管理者が本人だけの場合、アプリ内の`owner`/`editor`ロール、`iss + sub`対応表、独自ログインCookieを作らない。管理者追加や権限差が必要になった時点で認可モデルを追加する。
 - `/login`は`/admin/`へリダイレクトしてAccess認証を開始し、ログアウトはCloudflare Accessのlogout endpointを使う。
 - 管理画面レスポンスは`Cache-Control: private, no-store`とする。
-- 状態変更はPOST/PUT/PATCH/DELETEに限定し、CSRF tokenまたは同等のフレームワーク対策に加えて、`Origin`の完全一致を確認する。Fetch Metadataは追加の軽量な防御として利用できる。
+- 状態変更はPOST/PUT/PATCH/DELETEに限定し、CSRF token（または同等のフレームワーク対策）を必須とする。`Origin`完全一致やFetch Metadataの検証は任意の追加防御とし、初期必須にしない。管理画面は既にAccessの内側にある。
 - 作成・更新・削除は管理者email、操作、対象、時刻が分かるアプリログへ記録する。AccessとIdPの詳細ログ相関基盤は作らない。
 
 ## オリジン保護との境界
@@ -34,7 +34,7 @@ IdPまたはAccessへログインできない場合は、Cloudflare/Fly.ioの管
 - 許可した管理者だけがログインできる。
 - JWTなし、偽署名、異なる`aud`、期限切れをアプリが拒否する。
 - 管理画面と`/login`がCloudflareとブラウザでキャッシュされない。
-- CSRF tokenなし、または異なるOriginからの状態変更を拒否する。
+- CSRF tokenなしの状態変更を拒否する。
 
 ## 再検討条件
 

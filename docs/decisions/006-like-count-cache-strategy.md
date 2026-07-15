@@ -25,7 +25,7 @@
 - `Origin`、Content-Type、Fetch Metadataを検証し、不正形式はDB処理前に拒否する。
 - レート超過は`Retry-After`付き429、解消できないSQLite競合は503とする。
 
-送信元IPを信頼する場合は、ADR 013どおりCloudflare Tunnelを唯一の公開HTTP経路とし、単一で妥当な`CF-Connecting-IP`だけを使用する。IPは通常ログへ残さない。
+送信元IPはADR 013どおりTunnel経由の`CF-Connecting-IP`を使い、通常ログへ残さない。
 
 ## 不正への対応
 

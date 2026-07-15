@@ -124,7 +124,7 @@ async def cache_headers(request, call_next):
 - `/admin`とその全配下はCloudflare Access + 外部IdPで保護し、管理者emailを完全一致で許可する。MFAはIdP側で有効化する
 - FastAPIでもAccess JWTの署名・`iss`・`aud`・有効期限・emailを検証する。単一管理者の初期段階ではアプリ内role・identity表を作らない（[ADR 012](012-admin-auth-cloudflare-access.md)）
 - Access session cookieを伴うためキャッシュ不可。`/admin`とその全配下、および`/login`は`private, no-store`とする
-- 状態変更にはCSRF token、環境ごとの`PUBLIC_ORIGIN`との完全一致`Origin`、Fetch Metadata検証を必須とする。本番の`PUBLIC_ORIGIN`は`https://www.meigensyu.com`に固定する
+- 状態変更にはCSRF token（または同等のフレームワーク対策）を必須とする。`Origin`・Fetch Metadata検証は任意の追加防御とする（[ADR 012](012-admin-auth-cloudflare-access.md)）
 - 管理画面のJWT検証とは別に、サイト全体のCloudflare迂回をCloudflare TunnelとFlyの公開IP/service削除で防ぐ（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 
 ### 4.6 いいね数の表示
@@ -224,7 +224,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - （Page Rules は廃止方向のため **Cache Rules に統一**。旧 Page Rule 相当は上記③でカバー）
 - **WAF**:
   - Bot Fight Mode ON
-  - Rate limiting: Freeの1ルールは`/api/likes/*`へ優先し、IP単位10回/10秒・10秒blockの粗いburst shieldとする。`/search`用Cloudflare ruleは初期配置せず、アプリ側の30回/10秒・120回/60秒を正本とする。検索は1文字から500ms debounceで実行する（[ADR 006](006-like-count-cache-strategy.md)、[ADR 015](015-search-rate-limits.md)）
+  - Rate limiting: Freeの1ルールは`/api/likes/*`へ優先し、IP単位10回/10秒・10秒blockの粗いburst shieldとする。`/search`用Cloudflare ruleは初期配置せず、アプリ側の単純なIP制限（初期値の目安30回/10秒）を正本とする。検索は1文字から500ms debounceで実行する（[ADR 006](006-like-count-cache-strategy.md)、[ADR 015](015-search-rate-limits.md)）
 - **Admin access**: Cloudflare Access + 外部IdP側MFAとFastAPIでの最小限のAccess JWT検証を使用する（ADR 012）
 - **Origin protection（D14・確定）**: Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除する。FastAPIでexact Hostを検証し、AOP・CF IP allowlist・独自secret headerは併用しない（[ADR 013](013-cloudflare-tunnel-origin-protection.md)）
 
@@ -257,7 +257,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 ## 11. セキュリティ
 
 - Admin: Cloudflare Access + 外部IdP側MFA + FastAPIでの最小限のAccess JWT検証。初期は単一管理者を想定する
-- CSRF token、公開オリジンとの完全一致`Origin`、Fetch Metadata検証（Adminの状態変更）
+- Adminの状態変更にCSRF token（`Origin`・Fetch Metadata検証は任意の追加防御。ADR 012）
 - Cloudflare Accessの認証Cookieには`Secure`、`HttpOnly`、適切な`SameSite`属性を要求する
 - 全HTMLへ現実的な共通CSPと基本セキュリティヘッダーを適用する。HTMXのeval/script実行を無効化し、独自CSP report endpointは作らない。GA4/AdSenseは本体完成後の任意機能とする（[ADR 016](016-csp-htmx-rules.md)）
 - HTMXは`allowEval=false`、`allowScriptTags=false`とし、`hx-on`、イベントフィルタ、`js:`/`javascript:`値、断片内scriptを禁止する。`hx-csp`は初期採用しない（[ADR 016](016-csp-htmx-rules.md)）
@@ -304,6 +304,6 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] OG画像 `/api/og?type=quote&id=...` がエッジキャッシュされる
 - [ ] `fly ips list`にpublic IPがなくMachine実設定に公開serviceがなく、`*.fly.dev`と旧Anycast IPから到達できない
 - [ ] Tunnel routeとFastAPIが`www.meigensyu.com`だけを許可し、未知Hostを拒否する
-- [ ] 匿名いいねPOSTが`CF-Connecting-IP`の欠落・重複・カンマ区切り・不正なIPv4/IPv6を拒否する
+- [ ] 匿名いいねPOSTが`CF-Connecting-IP`から送信元IPを取得できる
 - [ ] `cloudflared`停止時に迂回経路がなくfail closedになり、public IP削除後もFlyの管理経路から復旧できる
 - [ ] `new.` サブドメインがインデックス不可になっている

@@ -16,10 +16,12 @@
 - 既存の恒久リダイレクトは最終canonicalへ1 hopの301または308で移植し、リダイレクトチェーンを作らない。
 - 現行`next.config.js`の静的リダイレクトは手作業で記録した20本ではなく、実装から確認した**23本**を対象とする。
 - middlewareの`/quotations/view/[id].html`からslugまたは`q{id}`への動的301も移植する。
-- slugと`qXXXX`の扱い、`page/1`の正規化、query parameter、404/410を含むURL契約表を作り、旧環境と新環境の比較テストの正本にする。
-- URL契約表はルート実装だけでなく、現行sitemap、アクセスログ、Search Console、被リンクも参照して補完する。
+- slugと`qXXXX`の扱い、`page/1`の正規化、主要リダイレクトを一覧にした簡単なURL契約表を作り、リリース前チェックの正本にする。現行sitemapとSearch Consoleの主要URLで補完する。
 
-## 検証
+## リリース前確認
 
-- URL契約fixtureにmethod、path、query、期待status、Location、canonical、indexabilityを記録する。
-- 新旧比較、redirect chain/loop、内部リンク、sitemap、self-canonicalを自動検査する。管理下の本番公開alias `https://meigensyu.com/`から`https://www.meigensyu.com/`へのhost正規化と、検証環境・未知Hostを正規化対象にしないことも契約fixtureに含める。
+- 静的リダイレクト23本と`/quotations/view/[id].html`の動的301が、最終canonicalへ1 hopで到達する。
+- sitemap・アクセス上位の主要URLが200または301で同等コンテンツへ到達し、self-canonicalが正しい。
+- `meigensyu.com`から`www.meigensyu.com`へのhost正規化が機能する。
+
+確認はスクリプトまたは手動`curl`でよく、fixture化した新旧自動比較は必須としない。

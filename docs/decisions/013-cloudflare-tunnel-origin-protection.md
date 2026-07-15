@@ -18,15 +18,14 @@
 - Tunnelで`Host`を一律上書きせず、FastAPIでも環境ごとの許可Hostを完全一致で限定する。本番は`www.meigensyu.com`だけを許可する。`*.fly.dev`や未知のHostをcanonical hostへリダイレクトせず、400または421で拒否する。
 - 検証環境を設ける場合は、環境全体をCloudflare Accessで管理者本人だけに制限し、許可Hostと`PUBLIC_ORIGIN`を`new.meigensyu.com`に設定する。本番昇格時に`www.meigensyu.com`へ変更し、公開ページと管理画面の代表的な導線を確認する。一時環境へ本番と同一の詳細ポリシーを再現することは必須としない。
 - Tunnelは管理者認証の代替にしない。`/admin`とその全配下ではADR 012のCloudflare Accessとアプリ側の最小限のJWT検証を維持する。
-- `CF-Connecting-IP`はTunnel経由のHTTPリクエストでのみ信頼する。少なくとも匿名いいねPOSTでは、ヘッダーが1個だけで、値がカンマを含まず、正しいIPv4またはIPv6であることを検証する。欠落、重複、不正値を拒否し、`X-Forwarded-For`やsocket peerへfallbackしない。IPはレート制限、`ip_hash`、不正検知の補助信号に限定し、認証identityに使わない。
+- `CF-Connecting-IP`はTunnel経由のHTTPリクエストでのみ信頼し、レート制限などbest-effortな補助信号に限定して使う。認証identityには使わず、`X-Forwarded-For`へのfallbackもしない。Tunnel以外の公開経路が存在しないため、アプリ側での網羅的なヘッダー形式検証は行わない。
 - Authenticated Origin Pulls、Cloudflare IPレンジallowlist、独自secret headerは併用しない。Tunnelでは公開TLSオリジンが存在せず、これらを重ねても初期構成の防御効果に対して運用負担が大きいためである。
 
 ## プロセス・秘密情報
 
 - `supervisord`がUvicorn、`cloudflared`、supercronicを監督し、子プロセス異常終了時に再起動する。公開serviceを持たない常時起動Machineにはrestart policy `always`を明示する。
 - `cloudflared`はコンテナ内でバージョンを固定し、自動更新を使わない。通常の依存更新時またはセキュリティ修正版公開時にイメージを更新する。
-- remotely-managed Tunnel tokenは`cloudflared`標準の`TUNNEL_TOKEN`環境変数としてFly secretに保存し、リポジトリ、イメージ、ログ、プロセス引数へ出さない。平常時は年1回を目安に更新し、漏洩疑いまたは共有先変更時は直ちに更新する。
-- token漏洩時は新しいtokenへ更新するだけでなく、旧tokenで確立済みのTunnel connectionをCloudflare APIまたはダッシュボードから切断し、新tokenで`cloudflared`を再起動する。公開前に手順をrunbook化するが、定期的な自動rotationや事前演習は必須にしない。
+- remotely-managed Tunnel tokenは`cloudflared`標準の`TUNNEL_TOKEN`環境変数としてFly secretに保存し、リポジトリ、イメージ、ログへ出さない。漏洩疑い時はtokenを更新し、旧tokenの確立済みconnectionをCloudflareダッシュボードから切断して`cloudflared`を再起動する。定期rotationや事前演習は必須にしない。
 
 ## ヘルスチェック・デプロイ
 
@@ -43,7 +42,7 @@
 - `www.meigensyu.com`だけがTunnel経由で正常応答し、未知のHostと未一致Tunnel routeが拒否される。
 - apexのproxied placeholder DNSとRedirect Ruleにより、`meigensyu.com`のpath・queryが1 hopの301または308で`www.meigensyu.com`へ維持される。
 - `/healthz`がCloudflareとブラウザでキャッシュされず、外形監視とデプロイ後smoke testがorigin停止を検知する。
-- 匿名いいねPOSTで正常な`CF-Connecting-IP`を取得でき、欠落、重複、カンマ区切り、不正なIPv4/IPv6を拒否する。
+- 匿名いいねPOSTで`CF-Connecting-IP`から送信元IPを取得できる。
 - Cloudflare WAFとレート制限が匿名いいね経路に適用され、`cloudflared`停止時に迂回経路がなくfail closedになる。
 - public IP削除後も`fly ssh console`、`fly logs`、`fly deploy`による管理・復旧ができる。
 

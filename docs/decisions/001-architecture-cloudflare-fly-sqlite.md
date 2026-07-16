@@ -146,7 +146,7 @@ async def cache_headers(request, call_next):
 - 稼働中のSQLiteファイルを単純に `cp` しない。Python `sqlite3.Connection.backup()`（SQLite Online Backup API）で一貫した一時DBを生成する。
 - 毎日03:00 JSTに、Uvicorn workerとは独立した専用 `supercronic` プロセスから単一ジョブを実行する。
 - 一時DBを`integrity_check`後にCloudflare R2へアップロードする。
-- 失敗時は通知し、最新成功時刻をログで確認できるようにする。
+- 成功時だけジョブ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければUptimeRobotからメール通知し、最新成功時刻はジョブログでも確認できるようにする。
 - R2の`daily/` prefixへUTC日時を含む一意な名前で上書きせず保存し、Lifecycleで30日後に削除する。Bucket Lockと追加snapshotは初期必須としない。
 - 正常に日次ジョブが動いている場合のRPOは約24時間、RTOは30分〜数時間を暫定目標とする。ジョブ失敗・未検知時はRPOを超過する。
 - 大きなデータ移行または破壊的migration前にはオンデマンドバックアップを取得する。
@@ -207,7 +207,7 @@ primary_region = "nrt"
 - PID 1の最小限のプロセス監督でUvicorn、`cloudflared`、supercronicを起動・再起動する。アプリ固有の状態管理は持たせない
 - `/healthz`は`private, no-store`とCloudflare Bypassを設定し、外形監視とデプロイ後smoke testに使う
 
-FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計はsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了、既存経路での失敗通知を使う。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
+FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計はsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了、成功時のUptimeRobot Heartbeat pingを使う。ping未着時はメール通知する。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
 
 ## 8. Cloudflare 設定
 
@@ -235,8 +235,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineでUvicorn worker起動前に一度だけ実行する
 - migration時は短いmaintenance windowを設け、破壊的変更では事前バックアップを取得して`alembic upgrade head`を実行し、主要ページを確認する
 - ログ: Fly.io の標準ログ + Cloudflare Analytics
-- 監視: Fly.io メトリクス + UptimeRobot などで外形監視
-- バックアップ: SQLite Online Backup APIによる日次R2保存。失敗を通知し、復元確認はリリース前・大きな変更後・四半期を目安に行う
+- 監視: Fly.ioメトリクスを参照し、UptimeRobotで`/healthz`の外形監視と定期ジョブのHeartbeat監視を行う。異常時はメール通知する
+- バックアップ: SQLite Online Backup APIによる日次R2保存。Heartbeat未着時にメール通知し、復元確認はリリース前・大きな変更後・四半期を目安に行う
 
 ## 10. 環境変数
 
@@ -253,6 +253,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `ADSENSE_PUBLISHER_ID` | 本体完成後、AdSenseを導入する場合だけ設定。未設定時は広告コードを出さない |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
+| `UPTIMEROBOT_*_HEARTBEAT_URL` | 本番定期ジョブごとのHeartbeat URL（Fly secret）。ローカルでは未設定でよい |
 
 ## 11. セキュリティ
 
@@ -264,18 +265,18 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - `X-Content-Type-Options: nosniff`
 - `Referrer-Policy: strict-origin-when-cross-origin`
 
-## 12. 段階的リリース手順
+## 12. 本番リリース手順
 
-1. Fly.io に新環境をデプロイ（別サブドメイン `new.meigensyu.com`）
-2. `new.meigensyu.com` は `noindex` / robots deny を有効化
-3. データ移行（旧DB → 新SQLite）
-4. 動作確認・キャッシュヘッダー検証（`curl -I` で確認）
-5. Cloudflare を経由させて動作確認
-6. DNS切替直前に差分再移行、または旧環境のAdmin/いいね書き込みを短時間凍結
-7. 検証環境の許可Host・`PUBLIC_ORIGIN`を`www.meigensyu.com`へ、`CF_ACCESS_AUD`を本番Access applicationのaudienceへ変更してデプロイ
-8. `www`のDNS/Tunnel routeを切り替え（TTL を事前に短くしておく）
-9. 公開ページと管理画面の正常性を確認し、`new.`の一時Tunnel routeとAccess applicationを削除
-10. 旧環境は 1〜2週間維持し、問題なければ廃止
+専用の検証環境は設けず、ローカルと本番の2環境で運用する。
+
+1. ローカルで本番相当データの移行、主要導線、URL互換を確認する。
+2. 本番Machineへデプロイし、Flyの管理経路からUvicorn、SQLite、Alembic revisionを確認する。
+3. DNS切替直前に旧環境のAdminといいね書き込みを短時間凍結し、最終データをSQLiteへ移行する。
+4. 本番の許可Host、`PUBLIC_ORIGIN`、`CF_ACCESS_AUD`を設定する。
+5. `www`のDNS/Tunnel routeを切り替える。DNS TTLは事前に短縮する。
+6. 公開ページ、管理画面、いいね、キャッシュヘッダー、`/healthz`を本番URLで確認する。
+7. Tunnel経由の正常性確認後、Flyのpublic service/IPを削除する。
+8. 旧環境は1〜2週間維持し、問題がなければ廃止する。
 
 ## 13. 期待効果
 
@@ -306,4 +307,3 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] Tunnel routeとFastAPIが`www.meigensyu.com`だけを許可し、未知Hostを拒否する
 - [ ] 匿名いいねPOSTが`CF-Connecting-IP`から送信元IPを取得できる
 - [ ] `cloudflared`停止時に迂回経路がなくfail closedになり、public IP削除後もFlyの管理経路から復旧できる
-- [ ] `new.` サブドメインがインデックス不可になっている

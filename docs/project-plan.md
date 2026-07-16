@@ -58,7 +58,8 @@
 | CDN/WAF | **Cloudflare**（無料プラン想定、エッジキャッシュ・Bot対策） |
 | 開発言語 | **Python 3.14**（通常版） |
 | Python依存管理 | **uv**（`pyproject.toml` + `uv.lock`） |
-| 公開オリジン | **`https://www.meigensyu.com/`**（既存ドメインを段階リリース後に切替） |
+| 環境 | **ローカル開発環境 + 本番環境**。専用の検証環境は設けない |
+| 公開オリジン | **`https://www.meigensyu.com/`**（既存ドメインから切替） |
 
 > キャッシュパージ、検索レート制限、CSP/HTMXを含む確定事項の詳細は対応するADRを正本とする。残る未決論点は第7章のD5・D8である。
 
@@ -261,23 +262,22 @@ meigen-fly/
 
 ### フェーズ5: デプロイ・インフラ
 - [ ] Dockerfile / fly.toml / ボリューム
-- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、失敗通知（D2/ADR 003）
+- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeatのメール通知（D2/ADR 003）
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
 - [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）
-- [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、Fly public IP/service削除、exact Host検証（D14/ADR 013）
+- [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）
 - [ ] no-store/Bypassの`/healthz`外形監視、デプロイ後smoke test、Tunnel/token漏洩時runbook（D14/ADR 013）
 - [ ] CI/CD（GitHub Actions → flyctl deploy）
-- [ ] 監視（Flyメトリクス/UptimeRobot）・バックアップ
+- [ ] UptimeRobotによる`/healthz`外形監視と定期ジョブHeartbeat監視（メール通知）
 
-### フェーズ6: 段階リリース（決定記録001 §12・ADR 013）
-- [ ] `new.` サブドメインで並行稼働・検証
-- [ ] `new.` サブドメインは `noindex` / robots deny を有効化
-- [ ] 検証環境を設ける場合は環境全体をAccessで本人だけに制限し、許可Host/`PUBLIC_ORIGIN`を`new.meigensyu.com`に限定する
-- [ ] DNS切替直前の差分再移行、または旧環境の書き込み凍結を実施
-- [ ] キャッシュヘッダ検証（`curl -I`、`cf-cache-status: HIT`）
-- [ ] 許可Host/`PUBLIC_ORIGIN`を`www.meigensyu.com`へ、`CF_ACCESS_AUD`を本番Access applicationのaudienceへ変更してデプロイする
-- [ ] DNS切替（TTL事前短縮）
-- [ ] `www`切替後に公開ページと管理画面の正常性を確認し、`new.`のTunnel routeと一時Access applicationを削除する
+### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
+- [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する
+- [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する
+- [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する
+- [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_AUD`を設定する
+- [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮）
+- [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する
+- [ ] Tunnel経由の正常性確認後、Flyのpublic service/IPを削除する
 - [ ] 旧環境1〜2週間維持後に廃止
 
 ## 9. リスクと対策
@@ -296,7 +296,7 @@ meigen-fly/
 | 管理画面のセキュリティ | Cloudflare Access + 外部IdP側MFA、FastAPIでのJWT検証、CSRF、no-store（D3/ADR 012）。初期は単一管理者を想定 |
 | Cloudflare迂回によるWAF/IP制限バイパス | Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除。exact Hostも検証（D14/ADR 013） |
 | `/random` がエッジキャッシュされ固定化 | 現行20件一覧を`private, no-store`とし、Cloudflare Cache Rulesでも明示Bypass（D13/ADR 010） |
-| 段階リリース中のデータ差分 | 切替直前の差分再移行または書き込み凍結をフェーズ6に組み込む |
+| 本番切替時のデータ差分 | 切替直前に旧環境のAdmin・いいね書き込みを短時間凍結して最終移行する |
 
 ## 10. 環境変数
 

@@ -14,9 +14,9 @@
 
 ## 事前調査で判明している規模感
 
-- `supabase/migrations/` に **99本** のmigrationがある。dumpを正本とし、migrationは差分と経緯の確認に使う。
+- `supabase/migrations/` に **SQL 98本 + CSV asset 2件(`assets/`配下)** がある(当初の「99本」は`assets`ディレクトリを含む誤計数。フェーズ1レビューで修正)。dumpを正本とし、migrationは差分と経緯の確認に使う。
 - 生成型 `src/types/supabase.gen.ts` が存在し、dump・migrationとの突合先として使える。
-- `docs/database/`、`docs/supabase/` などのDB関連文書、`scripts/` 配下に31個のスクリプト(バックアップ、ランキング再計算、データ修正系を含む)がある。
+- `docs/database/`、`docs/supabase/` などのDB関連文書、`scripts/` 配下にtrackedファイル43件(バックアップ、ランキング再計算、データ修正系を含む。当初の「31個」はトップレベルのみの誤計数。フェーズ1レビューで修正)がある。
 - 本番schema dump(2026-07-16取得)のヘッダー集計では、テーブル **20**、ビュー3、マテリアライズドビュー4、関数/RPC 26、trigger 14、RLS policy 57、インデックス54、ENUM等の型2、extension 6(`pg_cron` を含む)。既存文書の「19テーブル」仮説と件数が一致しない点は、フェーズ1で内訳を確認する。
 
 ## 成果物の構成
@@ -32,6 +32,15 @@ docs/database/
 ├── inventory-4-new-db-design.md         # 第4部: meigen-fly向けDB概念設計
 └── inventory-5-production-checklist.md  # 第5部: 本番DB確認事項と次の作業
 ```
+
+### 成果物のレビュー・コミット運用
+
+各フェーズは個別の作業セッションで実施する。運用は次のとおり(フェーズ1完了時に明文化)。
+
+1. 作業セッションは成果物を作成しても**コミットしない**(未コミットのまま完了報告する)。
+2. フェーズ完了ごとにレビューセッションが成果物を一次資料(dump、コード等)と突合してレビューする。
+3. レビュー通過後、レビューセッションが**mainへ直接コミット**する。フェーズごとのブランチは作らない。
+4. レビューで修正が必要になった場合は、修正を反映してからコミットする。
 
 各部で重要な結論には確度ラベルを付ける。
 
@@ -87,7 +96,7 @@ docs/database/
 ### 作業
 
 1. ユーザーが配置した本番schema dumpを**実在構造の正本**として読み、現在存在する全DBオブジェクトを一覧化する。
-2. `supabase/migrations/` 99本を**オブジェクト単位**(テーブル、ビュー、関数など)で追い、dumpとの差分(schema drift)と、各構造の由来・変更経緯を記録する。dumpが正本のため全数を精密に追う必要はなく、差異と経緯の確認に絞る。
+2. `supabase/migrations/` のSQL 98本を**オブジェクト単位**(テーブル、ビュー、関数など)で追い、dumpとの差分(schema drift)と、各構造の由来・変更経緯を記録する。dumpが正本のため全数を精密に追う必要はなく、差異と経緯の確認に絞る。
 3. `supabase/seed.sql`、`supabase/snippets/` を確認する。
 4. `src/types/supabase.gen.ts` から生成時点のDB構造を抽出し、dump・migrationと突合する。食い違いは断定せず差異として記録する。
 5. `docs/database/`、`docs/supabase/` などの文書を設計意図・経緯の参考として確認する。

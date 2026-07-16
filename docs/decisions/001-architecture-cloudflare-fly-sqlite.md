@@ -201,7 +201,7 @@ primary_region = "nrt"
 
 ### 7.2 Dockerfile 要点
 
-- `python:3.12-slim` ベース
+- `python:3.14-slim` ベース（free-threaded版は使用しない）
 - 初期は `uvicorn --workers 1 --host 127.0.0.1 --port 8000`
 - 固定バージョンの`cloudflared`を同梱し、自動更新は使わない
 - PID 1の最小限のプロセス監督でUvicorn、`cloudflared`、supercronicを起動・再起動する。アプリ固有の状態管理は持たせない

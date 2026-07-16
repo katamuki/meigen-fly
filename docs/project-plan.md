@@ -56,7 +56,8 @@
 | マイグレーション | **SQLAlchemy Core + Alembic**（手書きrevision中心） |
 | アプリプロセス | 初期は **Uvicorn 1 worker**。全定期ジョブは **supercronic** で分離実行 |
 | CDN/WAF | **Cloudflare**（無料プラン想定、エッジキャッシュ・Bot対策） |
-| 開発言語 | Python（3.12系想定） |
+| 開発言語 | **Python 3.14**（通常版） |
+| Python依存管理 | **uv**（`pyproject.toml` + `uv.lock`） |
 | 公開オリジン | **`https://www.meigensyu.com/`**（既存ドメインを段階リリース後に切替） |
 
 > キャッシュパージ、検索レート制限、CSP/HTMXを含む確定事項の詳細は対応するADRを正本とする。残る未決論点は第7章のD5・D8である。
@@ -226,7 +227,7 @@ meigen-fly/
 ### フェーズ0: 準備・意思決定（本計画書の次）
 - [x] D9・D12・D15・D16の決定とADR化（2026-07-14、ADR 006・014・015・016）
 - [ ] 残る未決論点 D5・D8 の決定
-- [ ] リポジトリ初期化（git init, Python環境, 依存管理: uv/poetry/pip-tools 選定）
+- [ ] Python 3.14 + uvによる開発環境初期化（`pyproject.toml`・`uv.lock`）
 - [ ] デザイン要件定義（D8）
 
 ### フェーズ1: 基盤構築

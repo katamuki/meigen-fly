@@ -146,7 +146,7 @@ async def cache_headers(request, call_next):
 - 稼働中のSQLiteファイルを単純に `cp` しない。Python `sqlite3.Connection.backup()`（SQLite Online Backup API）で一貫した一時DBを生成する。
 - 毎日03:00 JSTに、Uvicorn workerとは独立した専用 `supercronic` プロセスから単一ジョブを実行する。
 - 一時DBを`integrity_check`後にCloudflare R2へアップロードする。
-- 成功時だけジョブ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければUptimeRobotからメール通知し、最新成功時刻はジョブログでも確認できるようにする。
+- 成功時だけジョブ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければUptimeRobot公式アプリのPush通知を送り、メールも予備の通知先とする。最新成功時刻はジョブログでも確認できるようにする。
 - R2の`daily/` prefixへUTC日時を含む一意な名前で上書きせず保存し、Lifecycleで30日後に削除する。Bucket Lockと追加snapshotは初期必須としない。
 - 正常に日次ジョブが動いている場合のRPOは約24時間、RTOは30分〜数時間を暫定目標とする。ジョブ失敗・未検知時はRPOを超過する。
 - 大きなデータ移行または破壊的migration前にはオンデマンドバックアップを取得する。
@@ -207,7 +207,7 @@ primary_region = "nrt"
 - PID 1の最小限のプロセス監督でUvicorn、`cloudflared`、supercronicを起動・再起動する。アプリ固有の状態管理は持たせない
 - `/healthz`は`private, no-store`とCloudflare Bypassを設定し、外形監視とデプロイ後smoke testに使う
 
-FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計はsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了、成功時のUptimeRobot Heartbeat pingを使う。ping未着時はメール通知する。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
+FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計はsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了、成功時のUptimeRobot Heartbeat pingを使う。ping未着時は公式アプリPushを主、メールを予備として通知する。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
 
 ## 8. Cloudflare 設定
 
@@ -235,8 +235,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineでUvicorn worker起動前に一度だけ実行する
 - migration時は短いmaintenance windowを設け、破壊的変更では事前バックアップを取得して`alembic upgrade head`を実行し、主要ページを確認する
 - ログ: Fly.io の標準ログ + Cloudflare Analytics
-- 監視: Fly.ioメトリクスを参照し、UptimeRobotで`/healthz`の外形監視と定期ジョブのHeartbeat監視を行う。異常時はメール通知する
-- バックアップ: SQLite Online Backup APIによる日次R2保存。Heartbeat未着時にメール通知し、復元確認はリリース前・大きな変更後・四半期を目安に行う
+- 監視: Fly.ioメトリクスを参照し、UptimeRobotで`/healthz`の外形監視と定期ジョブのHeartbeat監視を行う。異常時は公式アプリPushを主、メールを予備として通知する
+- バックアップ: SQLite Online Backup APIによる日次R2保存。Heartbeat未着時は同じ通知経路を使い、復元確認はリリース前・大きな変更後・四半期を目安に行う
 
 ## 10. 環境変数
 

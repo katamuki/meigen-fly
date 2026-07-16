@@ -14,7 +14,7 @@
 - LiteFS、Litestream、複数Machineによる自動フェイルオーバーは初期導入しない。
 - 毎日1回、`sqlite3.Connection.backup()`で一貫した一時DBを作り、`PRAGMA integrity_check`後にCloudflare R2へ保存する。稼働DBを単純に`cp`しない。
 - R2の`daily/`配下へUTC日時を含む一意なオブジェクト名で保存し、同一キーを上書きしない。Lifecycleで各オブジェクトを30日後に自動削除する。Bucket LockとFly Volume snapshotの追加設定は必須としない。
-- バックアップ成功時だけ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければメール通知し、最新成功時刻を確認できるログも残す。アプリ内に独自の鮮度監視機能は作らない。
+- バックアップ成功時だけ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければ公式アプリPushを主、メールを予備として通知し、最新成功時刻を確認できるログも残す。アプリ内に独自の鮮度監視機能は作らない。
 - 大きなデータ移行または破壊的migrationの前にはオンデマンドバックアップを取得する。通常の小さなmigrationでは任意とする。
 
 ## migration時の手順
@@ -36,7 +36,7 @@
 
 ## 運用・検証
 
-- バックアップ成功時のHeartbeat pingと、未着時のメール通知をリリース前に確認する。
+- バックアップ成功時のHeartbeat pingと、未着時のアプリPush・メール通知をリリース前に確認する。
 - 復元確認は初回リリース前、大きなスキーマ変更後、または四半期を目安に実施する。月次演習は必須としない。
 - 暫定目標は正常時RPO約24時間、RTO数時間以内とする。
 
@@ -50,3 +50,4 @@
 - [Fly Volumes](https://fly.io/docs/volumes/overview/)
 - [Cloudflare R2 Object Lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)
 - [UptimeRobot Heartbeat Monitoring](https://uptimerobot.com/help/heartbeat-monitoring/)
+- [UptimeRobot Mobile App](https://uptimerobot.com/mobile-app/)

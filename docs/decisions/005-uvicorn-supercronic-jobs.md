@@ -13,7 +13,7 @@
 - 初期は`uvicorn --workers 1`とする。
 - バックアップ、ランキング再計算、カテゴリ件数再計算などの定期処理はsupercronicからCLIとして実行し、FastAPIのstartup/lifespanからスケジューラを起動しない。
 - 各ジョブは単純な`flock`で多重起動を防ぎ、最大実行時間と非ゼロ終了を設定する。
-- 失敗は標準エラーログへ出す。各ジョブは成功時だけ専用のUptimeRobot Heartbeat URLへpingし、予定時刻までにpingがなければメール通知する。これにより、ジョブの失敗だけでなくsupercronic停止などによる未実行も検知する。独自のstatus JSON、ジョブ鮮度API、共有・排他maintenance lockは初期実装しない。
+- 失敗は標準エラーログへ出す。各ジョブは成功時だけ専用のUptimeRobot Heartbeat URLへpingし、予定時刻までにpingがなければ公式アプリPushを主、メールを予備として通知する。これにより、ジョブの失敗だけでなくsupercronic停止などによる未実行も検知する。独自のstatus JSON、ジョブ鮮度API、共有・排他maintenance lockは初期実装しない。
 - 集計更新は短いtransactionで行い、失敗時は前回の正常結果を残す。
 - SQLite接続には`busy_timeout`を設定する。
 
@@ -23,7 +23,7 @@ Uvicorn、cloudflared、supercronicを同一Machineで動かすための最小�
 
 - 定期ジョブが予定時刻に1回だけ実行される。
 - 同じジョブの重複実行が`flock`で拒否またはスキップされる。
-- 失敗時に非ゼロ終了して成功pingを送らず、UptimeRobotからメール通知される。
+- 失敗時に非ゼロ終了して成功pingを送らず、UptimeRobotからアプリPushとメールが通知される。
 
 ## workerを増やす条件
 
@@ -33,3 +33,4 @@ Uvicorn、cloudflared、supercronicを同一Machineで動かすための最小�
 
 - [Fly.io Metrics and Alerting](https://fly.io/docs/monitoring/metrics/#alerting)
 - [UptimeRobot Heartbeat Monitoring](https://uptimerobot.com/help/heartbeat-monitoring/)
+- [UptimeRobot Mobile App](https://uptimerobot.com/mobile-app/)

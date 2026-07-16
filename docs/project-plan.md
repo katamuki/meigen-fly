@@ -262,13 +262,13 @@ meigen-fly/
 
 ### フェーズ5: デプロイ・インフラ
 - [ ] Dockerfile / fly.toml / ボリューム
-- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeatのメール通知（D2/ADR 003）
+- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
 - [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）
 - [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）
 - [ ] no-store/Bypassの`/healthz`外形監視、デプロイ後smoke test、Tunnel/token漏洩時runbook（D14/ADR 013）
 - [ ] CI/CD（GitHub Actions → flyctl deploy）
-- [ ] UptimeRobotによる`/healthz`外形監視と定期ジョブHeartbeat監視（メール通知）
+- [ ] UptimeRobotによる`/healthz`外形監視と定期ジョブHeartbeat監視（アプリPushを主通知、メールを予備）
 
 ### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
 - [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する

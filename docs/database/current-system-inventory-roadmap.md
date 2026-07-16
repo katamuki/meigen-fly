@@ -14,9 +14,10 @@
 
 ## 事前調査で判明している規模感
 
-- `supabase/migrations/` に **99本** のmigrationがある。単純列挙ではなく、オブジェクト単位で追加・変更・削除を追い、最終状態を推定する必要がある。
-- 生成型 `src/types/supabase.gen.ts` が存在し、migration追跡結果の突合先として使える。
+- `supabase/migrations/` に **99本** のmigrationがある。dumpを正本とし、migrationは差分と経緯の確認に使う。
+- 生成型 `src/types/supabase.gen.ts` が存在し、dump・migrationとの突合先として使える。
 - `docs/database/`、`docs/supabase/` などのDB関連文書、`scripts/` 配下に31個のスクリプト(バックアップ、ランキング再計算、データ修正系を含む)がある。
+- 本番schema dump(2026-07-16取得)のヘッダー集計では、テーブル **20**、ビュー3、マテリアライズドビュー4、関数/RPC 26、trigger 14、RLS policy 57、インデックス54、ENUM等の型2、extension 6(`pg_cron` を含む)。既存文書の「19テーブル」仮説と件数が一致しない点は、フェーズ1で内訳を確認する。
 
 ## 成果物の構成
 
@@ -59,25 +60,16 @@ docs/database/
 
 ### 作業
 
-1. **ユーザーへ本番schema dumpの取得を依頼する。** 調査担当は本番DBへ接続しないため、ユーザー自身が取得して配置する。
-   - 取得するもの: schema-onlyのdump(データ本体・件数は不要。必要になればフェーズ5で整理する)
-   - 取得コマンド例(接続情報は環境変数のまま。値を表示しない):
-
-     ```bash
-     # Supabase CLI(リンク済みプロジェクトの場合)
-     supabase db dump -f schema.sql
-
-     # または pg_dump 直接
-     pg_dump "$DATABASE_URL" --schema-only -f schema.sql
-     ```
-
+1. **本番schema dumpの取得(完了済み・2026-07-16)。** 調査担当は本番DBへ接続しないため、ユーザーが取得して配置した。
+   - 取得済みファイル: schema-onlyのdump(COPY/INSERTのデータ行なしを確認済み)
    - 配置先(Git管理外):
 
      ```text
      /Users/sonoda/prj/meigen-fly-private/source-db/schema/schema.sql
      ```
 
-   - dumpの配置を待たずにフェーズ0の残りとフェーズ2は進められる。フェーズ1はdump配置後に着手するのが望ましい(未配置の場合はmigration推定方式にフォールバックし、後でdumpと再突合する)。
+   - 元ファイル: `/Users/sonoda/prj/backups_meigensyu/prod-20260716-163419.sql`(コピー元として保持)
+   - フェーズ1はこのdumpを実在構造の正本として使う。実データ(件数等)は取得していない。必要になればフェーズ5で整理する。
 2. 両リポジトリの `AGENTS.md`(meigensyuは `CLAUDE.md` も)をすべて読む。
 3. 両リポジトリの `git status` を確認し、既存の未コミット変更に触れないことを確認する。
 4. `docs/project-plan.md` と `docs/decisions/` 全ADR(001〜016)を読み、確定済み方針を整理する。特にADR 004(SQLAlchemy Core + Alembic)、006(いいね件数キャッシュ)、008(URL互換性)、009(表示言語)、011(日時形式)はフェーズ4の設計制約になる。
@@ -85,7 +77,7 @@ docs/database/
 
 ### 完了条件
 
-- ユーザーへdump取得を依頼済みで、配置場所が合意できている。
+- schema dumpが所定の場所に配置されている(完了済み)。
 - 確定済み方針(変更しない事項)と、本作業で見直してよい事項の区別がついている。
 
 ---
@@ -95,8 +87,7 @@ docs/database/
 ### 作業
 
 1. ユーザーが配置した本番schema dumpを**実在構造の正本**として読み、現在存在する全DBオブジェクトを一覧化する。
-2. `supabase/migrations/` 99本を**オブジェクト単位**(テーブル、ビュー、関数など)で追い、dumpとの差分(schema drift)と、各構造の由来・変更経緯を記録する。dumpがある前提では全数を精密に追う必要はなく、差異と経緯の確認に絞る。
-   - dumpが未配置の場合のフォールバック: migrationを時系列に集約して最終状態を推定し、結論の確度を下げて記録する。dump入手後に再突合する。
+2. `supabase/migrations/` 99本を**オブジェクト単位**(テーブル、ビュー、関数など)で追い、dumpとの差分(schema drift)と、各構造の由来・変更経緯を記録する。dumpが正本のため全数を精密に追う必要はなく、差異と経緯の確認に絞る。
 3. `supabase/seed.sql`、`supabase/snippets/` を確認する。
 4. `src/types/supabase.gen.ts` から生成時点のDB構造を抽出し、dump・migrationと突合する。食い違いは断定せず差異として記録する。
 5. `docs/database/`、`docs/supabase/` などの文書を設計意図・経緯の参考として確認する。

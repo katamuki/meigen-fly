@@ -4,6 +4,15 @@
 
 論点・既定案・分岐の詳細は[第4部§12](inventory-4-new-db-design.md)、確認項目A1〜A9・O1〜O4の内容は[第5部](inventory-5-production-checklist.md)を参照。
 
+## 確認の実施状況
+
+- [x] A1〜A9(DB内確認): 2026-07-17に `verification.sql` を本番へ実行済み(READ ONLY・SELECT-only、exit 0、エラーなし、全セクション出力)。結果は `/Users/sonoda/prj/meigen-fly-private/source-db/verification/verification-results.txt`(Git管理外)。
+  - ただしA8の検索3検査は、検索代表語未設定のためskip。語を決めて再実行すれば取得できる。
+- [ ] O1〜O4(DB外確認): 未実施。`verification/` 配下の記入テンプレート3件にユーザーが記入する。
+- [ ] 確認結果の解析と「確認結果」「推奨案」欄の記入(タスクB)。
+- [ ] ユーザーによる「判断」欄の記入(18件+U1)。
+- [ ] 判断結果の反映と `docs/project-plan.md` 修正候補6件の適用(タスクC)。
+
 | # | 論点 | 既定案 | 対応する確認項目 | 確認結果 | 推奨案 | 判断 |
 |---:|---|---|---|---|---|---|
 | 1 | `source_type_assignments` | 多対多表を維持 | A5 + O2 |  |  |  |

@@ -7,11 +7,11 @@
   <a href="/">ホーム</a><span class="sep">/</span><span class="current">名言一覧</span>
 </nav>
 
-<div class="mg-wide" style="padding-top:var(--sp-8);padding-bottom:var(--sp-12)">
-  <div class="mg-section-head" style="align-items:flex-end;margin-bottom:var(--sp-6)">
+<div class="mg-wide mg-page-body">
+  <div class="mg-section-head mg-section-head--end mg-mb-6">
     <div>
       <h1 class="mg-h1">名言一覧</h1>
-      <div class="mg-hero__meta" style="margin-top:var(--sp-3)">全 {{ total|comma }}件</div>
+      <div class="mg-hero__meta mg-mt-3">全 {{ total|comma }}件</div>
     </div>
     {# ソート：リンク＝JS不要。現在値は is-active #}
     <div class="mg-chips">
@@ -27,7 +27,7 @@
     {% endfor %}
   </div>
 
-  <div style="margin-top:var(--sp-12)">
+  <div class="mg-mt-12">
     {% include "partials/pagination.html" %}
   </div>
 </div>

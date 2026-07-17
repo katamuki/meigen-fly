@@ -3,21 +3,21 @@
   <a class="mg-logo" href="/">名言集<span>.com</span></a>
 
   <nav class="mg-nav mg-nav--desktop" aria-label="グローバルナビ">
-    <a href="/quotes/"{% if nav == 'quotes' %} aria-current="page"{% endif %}>名言</a>
-    <a href="/authors/"{% if nav == 'authors' %} aria-current="page"{% endif %}>著者</a>
-    <a href="/categories/"{% if nav == 'categories' %} aria-current="page"{% endif %}>カテゴリ</a>
-    <a href="/ranking/"{% if nav == 'ranking' %} aria-current="page"{% endif %}>ランキング</a>
-    <a href="/random/"{% if nav == 'random' %} aria-current="page"{% endif %}>ランダム</a>
+    <a href="/quotes"{% if nav == 'quotes' %} aria-current="page"{% endif %}>名言</a>
+    <a href="/authors"{% if nav == 'authors' %} aria-current="page"{% endif %}>著者</a>
+    <a href="/categories"{% if nav == 'categories' %} aria-current="page"{% endif %}>カテゴリ</a>
+    <a href="/ranking"{% if nav == 'ranking' %} aria-current="page"{% endif %}>ランキング</a>
+    <a href="/random"{% if nav == 'random' %} aria-current="page"{% endif %}>ランダム</a>
   </nav>
 
   <span class="mg-header__spacer"></span>
 
   {# 検索フォーム：JSなしでも /search へ通常GET。HTMXがあれば入力中に結果差し替え #}
-  <form class="mg-search" action="/search/" method="get" role="search">
+  <form class="mg-search" action="/search" method="get" role="search">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
     <input class="mg-search__input" type="search" name="q" placeholder="名言・著者を検索"
            value="{{ q|default('') }}"
-           hx-get="/search/partial/" hx-trigger="keyup changed delay:200ms, search"
+           hx-get="/search/partial" hx-trigger="keyup changed delay:500ms, search"
            hx-target="#search-results" hx-push-url="false" autocomplete="off" aria-label="検索">
   </form>
 

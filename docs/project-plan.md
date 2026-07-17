@@ -61,7 +61,7 @@
 | 環境 | **ローカル開発環境 + 本番環境**。専用の検証環境は設けない |
 | 公開オリジン | **`https://www.meigensyu.com/`**（既存ドメインから切替） |
 
-> キャッシュパージ、検索レート制限、CSP/HTMXを含む確定事項の詳細は対応するADRを正本とする。残る未決論点は第7章のD5・D8である。
+> キャッシュパージ、検索レート制限、CSP/HTMXを含む確定事項の詳細は対応するADRを正本とする。残る未決論点は第7章のD5である。
 
 ## 3. スコープ（何を作り変えるか）
 
@@ -216,10 +216,10 @@ meigen-fly/
 | D2 | SQLite永続化・バックアップ | ✅ 単一Machine + 日次R2バックアップ（[ADR 003](decisions/003-sqlite-daily-backup.md)） |
 | D3 | 管理者認証 | ✅ Cloudflare Access + 外部IdP（[ADR 012](decisions/012-admin-auth-cloudflare-access.md)） |
 | D4 | マイグレーション管理 | ✅ SQLAlchemy Core + Alembic（[ADR 004](decisions/004-alembic-migrations.md)） |
-| D5 | OG画像生成 | ⏳ **未決**。Pillow / 事前生成＋キャッシュ等を比較 |
+| D5 | OG画像生成 | ⏳ **未決**。Pillow / 事前生成＋キャッシュ等を比較。D8から引き継ぐ検討事項: 80字超の名言の扱い（`og--xlong` 追加 or 切り詰め）と文字数閾値、本番コンテナへの `Noto Serif JP` 導入 |
 | D6 | worker数・定期ジョブ | ✅ Uvicorn 1 worker + supercronic（[ADR 005](decisions/005-uvicorn-supercronic-jobs.md)） |
 | D7 | SQLiteランタイム | ✅ Python標準`sqlite3`（[ADR 007](decisions/007-python-sqlite-runtime.md)） |
-| D8 | デザイン刷新の範囲 | ⏳ **未決**。別途デザインガイドで定義 |
+| D8 | デザイン刷新の範囲 | ✅ 確定。提案B「墨（藍）× 宵」採用。デザインガイドを正本（[ADR 017](decisions/017-design-system-d8.md)、[design-guide](design/design-guide.md)） |
 | D9 | いいね（公開書き込み） | ✅ HTML焼き込み + 専用POST + best-effort重複抑止（[ADR 006](decisions/006-like-count-cache-strategy.md)） |
 | D10 | URL互換性 | ✅ 現行URL・意味・canonicalを維持（[ADR 008](decisions/008-url-compatibility.md)） |
 | D11 | 名言の主表示言語 | ✅ 現行`display_language_preference`仕様を維持（[ADR 009](decisions/009-quote-display-language.md)） |
@@ -230,15 +230,16 @@ meigen-fly/
 | D16 | CSPとHTMX規約 | ✅ 共通CSP + HTMX危険機能の無効化（[ADR 016](decisions/016-csp-htmx-rules.md)） |
 | D17 | 日時のSQLite保存形式 | ✅ 固定長UTC `TEXT`（[ADR 011](decisions/011-sqlite-datetime-format.md)） |
 
-> 残る未決事項はD5（OG画像生成）とD8（デザイン刷新範囲）。D9・D12・D15・D16は対応ADRを正本として確定済みである。
+> 残る未決事項はD5（OG画像生成）のみ。D8はADR 017で確定。D9・D12・D15・D16は対応ADRを正本として確定済みである。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
 - [x] D9・D12・D15・D16の決定とADR化（2026-07-14、ADR 006・014・015・016）
-- [ ] 残る未決論点 D5・D8 の決定
+- [x] D8（デザイン刷新）の決定とADR化（2026-07-17、ADR 017。提案B採用・デザインガイド正本化）
+- [ ] 残る未決論点 D5 の決定
 - [ ] Python 3.14 + uvによる開発環境初期化（`pyproject.toml`・`uv.lock`）
-- [ ] デザイン要件定義（D8）
+- [x] デザイン要件定義（D8。[design-guide](design/design-guide.md)）
 
 ### フェーズ1: 基盤構築
 - [ ] FastAPIスケルトン + Jinja2 + 静的配信
@@ -318,5 +319,5 @@ meigen-fly/
 ## 12. 次のアクション
 
 1. 本計画書レビュー・合意
-2. 残る未決論点 **D5（OG画像生成）・D8（デザイン刷新範囲）** を決定（D9・D12・D15・D16はADR 006・014・015・016で確定済み）
+2. 残る未決論点 **D5（OG画像生成）** を決定（D8はADR 017、D9・D12・D15・D16はADR 006・014・015・016で確定済み）
 3. リポジトリ初期化 → フェーズ1着手

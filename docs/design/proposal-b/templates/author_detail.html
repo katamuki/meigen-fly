@@ -6,7 +6,7 @@
 {% block content %}
 <nav class="mg-breadcrumb" aria-label="パンくず">
   <a href="/">ホーム</a><span class="sep">/</span>
-  <a href="/authors/">著者</a><span class="sep">/</span>
+  <a href="/authors">著者</a><span class="sep">/</span>
   <span class="current">{{ author.name }}</span>
 </nav>
 
@@ -14,10 +14,10 @@
   <span class="mg-avatar mg-avatar--lg">{{ author.name[0] }}</span>
   <div class="mg-author-profile__body">
     <h1 class="mg-h1">{{ author.name }}</h1>
-    <div class="mg-chips" style="margin-top:var(--sp-4)">
+    <div class="mg-chips mg-mt-4">
       {% if author.occupation %}<span class="mg-chip">{{ author.occupation }}</span>{% endif %}
       {% for role in author.roles %}<span class="mg-chip">{{ role }}</span>{% endfor %}
-      {% if author.country %}<a class="mg-chip" href="/authors/?country={{ author.country_code }}">{{ author.country }}</a>{% endif %}
+      {% if author.country %}<a class="mg-chip" href="/authors?country={{ author.country_code }}">{{ author.country }}</a>{% endif %}
       {% if author.lifespan %}<span class="mg-chip">{{ author.lifespan }}</span>{% endif %}
     </div>
     {% if author.bio %}<p class="mg-author-profile__bio">{{ author.bio }}</p>{% endif %}
@@ -28,8 +28,8 @@
   </div>
 </div>
 
-<div class="mg-wide" style="padding-bottom:var(--sp-12)">
-  <div class="mg-section-head" style="margin-bottom:var(--sp-4)">
+<div class="mg-wide mg-pb-12">
+  <div class="mg-section-head mg-mb-4">
     <h2 class="mg-h2">{{ author.name }}の名言</h2>
     <div class="mg-chips">
       <a class="mg-chip{% if sort == 'likes' %} mg-chip--sort-active{% endif %}" href="?sort=likes">いいね順</a>
@@ -41,6 +41,6 @@
       {% with quote = q, variant = 'featured' %}{% include "partials/quote_card.html" %}{% endwith %}
     {% endfor %}
   </div>
-  <div style="margin-top:var(--sp-8)">{% include "partials/pagination.html" %}</div>
+  <div class="mg-mt-8">{% include "partials/pagination.html" %}</div>
 </div>
 {% endblock %}

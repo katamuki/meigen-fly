@@ -4,12 +4,12 @@
 {% block meta_robots %}<meta name="robots" content="noindex">{% endblock %}
 
 {% block content %}
-<div class="mg-text" style="padding-top:var(--sp-8);padding-bottom:var(--sp-12)">
-  <form class="mg-search mg-search--hero" action="/search/" method="get" role="search">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+<div class="mg-text mg-page-body">
+  <form class="mg-search mg-search--hero" action="/search" method="get" role="search">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
     <input class="mg-search__input mg-search__input--hero" type="search" name="q" value="{{ q|default('') }}"
            placeholder="名言・著者・カテゴリを検索" autofocus autocomplete="off"
-           hx-get="/search/partial/" hx-trigger="keyup changed delay:200ms, search"
+           hx-get="/search/partial" hx-trigger="keyup changed delay:500ms, search"
            hx-target="#search-results" aria-label="検索">
   </form>
 

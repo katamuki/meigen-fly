@@ -6,13 +6,13 @@
 {% block og_title %}{{ quote.author.name }}の名言｜名言集.com{% endblock %}
 {% block og_description %}{{ quote.text }}{% endblock %}
 {# 名言個別のOG画像は名言ごとに動的生成（下記 og.html を画像化） #}
-{% block og_image %}{{ absolute_url('/quotes/' ~ quote.id ~ '/og.png') }}{% endblock %}
+{% block og_image %}{{ absolute_url('/quotes/' ~ (quote.slug or 'q' ~ quote.id) ~ '/og.png') }}{% endblock %}
 
 {% block content %}
 <nav class="mg-breadcrumb" aria-label="パンくず">
   <a href="/">ホーム</a><span class="sep">/</span>
-  <a href="/categories/">カテゴリ</a><span class="sep">/</span>
-  {% if quote.primary_category %}<a href="/categories/{{ quote.primary_category.slug }}/">{{ quote.primary_category.name }}</a><span class="sep">/</span>{% endif %}
+  <a href="/categories">カテゴリ</a><span class="sep">/</span>
+  {% if quote.primary_category %}<a href="/categories/{{ quote.primary_category.slug }}">{{ quote.primary_category.name }}</a><span class="sep">/</span>{% endif %}
   <span class="current">名言</span>
 </nav>
 
@@ -20,7 +20,7 @@
   <div class="mg-hero">
     <h1 class="mg-hero__quote">{{ quote.text }}</h1>
     <div class="mg-hero__rule"></div>
-    <a class="mg-author" href="/authors/{{ quote.author.slug }}/" style="font-size:var(--fs-small)">{{ quote.author.name }}</a>
+    <a class="mg-author" href="/authors/{{ quote.author.slug }}">{{ quote.author.name }}</a>
     {% if quote.source %}<div class="mg-hero__source">出典：{{ quote.source }}{% if quote.year %} / {{ quote.year }}年{% endif %}</div>{% endif %}
 
     <div class="mg-actions">
@@ -32,14 +32,14 @@
     </div>
 
     {% if quote.categories %}
-    <div class="mg-chips" style="justify-content:center;margin-top:var(--sp-6)">
-      {% for c in quote.categories %}<a class="mg-chip" href="/categories/{{ c.slug }}/">{{ c.name }}</a>{% endfor %}
+    <div class="mg-chips mg-chips--center mg-mt-6">
+      {% for c in quote.categories %}<a class="mg-chip" href="/categories/{{ c.slug }}">{{ c.name }}</a>{% endfor %}
     </div>
     {% endif %}
   </div>
 
   {# 著者カード #}
-  <a class="mg-author-card" href="/authors/{{ quote.author.slug }}/">
+  <a class="mg-author-card" href="/authors/{{ quote.author.slug }}">
     <span class="mg-avatar">{{ quote.author.name[0] }}</span>
     <div class="mg-author-card__body">
       <div class="mg-author">{{ quote.author.name }}</div>
@@ -50,12 +50,12 @@
 
   {# この著者の他の名言 #}
   {% if related %}
-  <section style="margin-top:var(--sp-8)">
-    <h2 class="mg-h2" style="margin-bottom:var(--sp-4)">この著者の名言</h2>
+  <section class="mg-mt-8">
+    <h2 class="mg-h2 mg-mb-4">この著者の名言</h2>
     <div class="mg-stack">
       {% for q in related %}
       <article class="mg-quote-card mg-quote-card--list">
-        <a class="mg-quote" href="/quotes/{{ q.id }}/">{{ q.text }}</a>
+        <a class="mg-quote" href="/quotes/{{ q.slug or 'q' ~ q.id }}">{{ q.text }}</a>
         <div class="mg-quote-card__foot">
           <span class="mg-hero__meta">{{ q.categories|map(attribute='name')|join('・') }}</span>
           {% with quote = q %}{% include "partials/like_button.html" %}{% endwith %}

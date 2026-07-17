@@ -7,22 +7,22 @@
   <a href="/">ホーム</a><span class="sep">/</span><span class="current">ランキング</span>
 </nav>
 
-<div class="mg-wide" style="padding-top:var(--sp-8);padding-bottom:var(--sp-12)">
-  <div class="mg-section-head" style="align-items:flex-end;margin-bottom:var(--sp-4)">
+<div class="mg-wide mg-page-body">
+  <div class="mg-section-head mg-section-head--end mg-mb-4">
     <h1 class="mg-h1">ランキング</h1>
     <div class="mg-chips">
       {% for key, label in [('quotes','名言'),('authors','著者'),('categories','カテゴリ')] %}
-      <a class="mg-chip{% if tab == key %} mg-chip--sort-active{% endif %}" href="/ranking/{{ key }}/">{{ label }}</a>
+      <a class="mg-chip{% if tab == key %} mg-chip--sort-active{% endif %}" href="/ranking/{{ key }}">{{ label }}</a>
       {% endfor %}
     </div>
   </div>
 
   {# 上位3：メダル強調カード #}
-  <div class="mg-grid-3" style="margin-bottom:var(--sp-4)">
+  <div class="mg-grid-3 mg-mb-4">
     {% for q in top3 %}
     <article class="mg-quote-card{% if loop.index == 1 %} mg-quote-card--gold{% endif %}">
       <span class="mg-medal mg-medal--{{ loop.index }}">{{ loop.index }}</span>
-      <a class="mg-quote" href="/quotes/{{ q.id }}/" style="margin-top:var(--sp-4);display:block">{{ q.text }}</a>
+      <a class="mg-quote mg-block mg-mt-4" href="/quotes/{{ q.slug or 'q' ~ q.id }}">{{ q.text }}</a>
       <div class="mg-quote-card__foot">
         <span class="mg-author">{{ q.author.name }}</span>
         {% with quote = q %}{% include "partials/like_button.html" %}{% endwith %}
@@ -37,7 +37,7 @@
     <div class="mg-rank-row">
       <span class="mg-rank-num">{{ loop.index + 3 }}</span>
       <div class="mg-rank-row__q">
-        <a class="q" href="/quotes/{{ q.id }}/">{{ q.text }}</a>
+        <a class="q" href="/quotes/{{ q.slug or 'q' ~ q.id }}">{{ q.text }}</a>
         <span class="by">{{ q.author.name }}</span>
       </div>
       {% with quote = q %}{% include "partials/like_button.html" %}{% endwith %}

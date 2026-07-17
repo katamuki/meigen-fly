@@ -1,11 +1,15 @@
-{# いいねボタン（HTMXでPOST→自身を差し替え。JSなしでも通常POSTで成立）
+{# いいねフォーム（HTMXでPOST→フォーム自身を差し替え。JS無効時は通常POSTで成立）
+   経路: POST /api/likes/{quote_id}（ADR 006。数値 quote.id をキーに一意制約 (quote_id, client_uuid)）。
+   client_uuid は localStorage 由来のため、外部静的JSが htmx:configRequest で付与する（ADR 016。js:付き hx-vals は使わない）。
+   JS無効時はフォームの通常POSTで送信され、client_uuid なしのbest-effortとしてサーバが処理する。
    引数: quote{id,likes,liked} / size = 'pill'|'solid'（省略時 素） #}
-<button class="mg-like{% if size == 'pill' %} mg-like--pill{% elif size == 'solid' %} mg-like--solid{% endif %}{% if quote.liked %} is-liked{% endif %}"
-        type="button"
-        hx-post="/quotes/{{ quote.id }}/like/"
-        hx-swap="outerHTML"
-        aria-pressed="{{ 'true' if quote.liked else 'false' }}"
-        aria-label="いいね">
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>
-  {% if size == 'solid' %}いいね<span class="count">{{ quote.likes|comma }}</span>{% else %}{{ quote.likes|comma }}{% endif %}
-</button>
+<form class="mg-like-form" method="post" action="/api/likes/{{ quote.id }}"
+      hx-post="/api/likes/{{ quote.id }}" hx-swap="outerHTML">
+  <button class="mg-like{% if size == 'pill' %} mg-like--pill{% elif size == 'solid' %} mg-like--solid{% endif %}{% if quote.liked %} is-liked{% endif %}"
+          type="submit"
+          aria-pressed="{{ 'true' if quote.liked else 'false' }}"
+          aria-label="いいね">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>
+    {% if size == 'solid' %}いいね<span class="count">{{ quote.likes|comma }}</span>{% else %}{{ quote.likes|comma }}{% endif %}
+  </button>
+</form>

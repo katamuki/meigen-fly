@@ -1,5 +1,5 @@
 {# ============================================================
-   名言集.com — ベースレイアウト（提案A 墨×宵 確定）
+   名言集.com — ベースレイアウト（提案B 墨（藍）×宵 確定）
    Jinja2 + HTMX / CSP対応：インライン style/script なし
    静的アセットは {{ static(...) }} を各プロジェクトのヘルパに合わせて差し替え
    ============================================================ #}
@@ -8,8 +8,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# テーマ手動切替：data-theme を初回描画前に localStorage から復元しFOUCを防ぐ。
+     ADR 016に従い外部静的JSのみ（インラインscript禁止）。head 内で同期実行するため defer は付けない #}
+  <script src="{{ static('js/theme.js') }}"></script>
   <title>{% block title %}名言集.com{% endblock %}</title>
   <meta name="description" content="{% block meta_description %}約1,800の名言と770人の著者。人生・恋愛・仕事の言葉をカテゴリ・著者・出典から探せる名言ポータル。{% endblock %}">
+  {% block meta_robots %}{% endblock %}
   <link rel="canonical" href="{% block canonical %}{{ request.url }}{% endblock %}">
 
   {# --- OGP（名言個別でオーバーライド） --- #}

@@ -92,6 +92,9 @@ mark { background: var(--mark); color: var(--ink); padding: 0 2px; border-radius
 }
 .mg-like--solid svg { width: 18px; height: 18px; }
 .mg-like--solid .count { opacity: .85; font-weight: 700; }
+/* いいねフォーム：JS無効時は通常POSTで成立（ADR 006 / POST /api/likes/{id}）。
+   display:contents で従来のボタン単体と同じレイアウト位置を保つ */
+.mg-like-form { display: contents; }
 
 /* --- Quote card：注目（featured） --- */
 .mg-quote-card {
@@ -222,6 +225,26 @@ a.mg-hero__quote:hover { text-decoration: none; color: var(--ink); }
 .mg-footer__inner { display: flex; align-items: center; justify-content: space-between; padding-top: var(--sp-6); padding-bottom: var(--sp-6); }
 .mg-footer__nav { display: flex; gap: var(--sp-6); font-size: var(--fs-caption); color: var(--muted); }
 .mg-footer__nav a { color: inherit; }
+
+/* ============================================================
+   ユーティリティ（トークン参照のみ。テンプレートのインラインstyle置換用）
+   余白は spacing スケール（--sp-*）を参照し、直値は書かない。
+   ============================================================ */
+.mg-page-body { padding-block: var(--sp-8) var(--sp-12); }  /* 一覧・検索・ランキング・カテゴリ本文の上下余白（.mg-page はページネーション用のため衝突回避） */
+.mg-pb-12  { padding-bottom: var(--sp-12); }
+.mg-mt-3   { margin-top: var(--sp-3); }
+.mg-mt-4   { margin-top: var(--sp-4); }
+.mg-mt-6   { margin-top: var(--sp-6); }
+.mg-mt-8   { margin-top: var(--sp-8); }
+.mg-mt-12  { margin-top: var(--sp-12); }
+.mg-mb-4   { margin-bottom: var(--sp-4); }
+.mg-mb-6   { margin-bottom: var(--sp-6); }
+.mg-mb-8   { margin-bottom: var(--sp-8); }
+.mg-my-4   { margin-block: var(--sp-4); }
+.mg-block  { display: block; }
+/* 既存コンポーネントの文脈的バリアント */
+.mg-section-head--end { align-items: flex-end; }   /* 見出しと右側チップを下端揃え */
+.mg-chips--center     { justify-content: center; } /* 名言個別の中央寄せチップ列 */
 
 /* ============================================================
    レスポンシブ（モバイルファースト：<=640px でナビを畳む）

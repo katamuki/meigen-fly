@@ -105,7 +105,7 @@ SQL案は§4のA1節へまとめる。結果は`verification/verification-result
 
 ### A8. count/searchの基準値とローカル比較
 
-目的は、第4部§12「snapshot列/sort」「条件付き廃止object」と第4部§14.8/10について、現行の意味をSQLite候補SQLで再現できることを確かめることである。
+目的は、第4部§12「snapshot列/sort」「条件付き廃止object」と第4部§14の項目8・10について、現行の意味をSQLite候補SQLで再現できることを確かめることである。
 
 本番から取得するのは、公開名言数、category親の重複除外件数、category子/character/country/profession件数、および事前に選んだ公開済み代表検索語に対する件数・先頭の公開数値IDだけである。検索語は公開コンテンツから選び、結果ファイルには検索語自体を残さなくてもよい。PGroongaのquery planは取得不要（§6 N4）とする。
 

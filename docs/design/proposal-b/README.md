@@ -54,7 +54,7 @@ D8決定は「OS追従＋手動切替の両対応」。CSP `script-src 'self'` �
 - いいねエンドポイント `POST /api/likes/{quote_id}`（ADR 006。`private, no-store` + Cloudflare Bypass）。
 - 検索フラグメント `GET /search/partial`（`HX-Request` 応答。`Vary: HX-Request`）。
 - 静的JS `static/js/theme.js`（上記仕様）、`static/js/htmx.min.js`。
-- 名言個別 OG画像：`/quotes/{slug または q{id}}/og.png` を宵ベースで動的生成（`og/og.html` を画像化）。
+- 名言個別 OG画像：サイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとして `/quotes/{slug または q{id}}/og.png` を生成（`og/og.html` を画像化）。
 
 ## A との差分
 Light の `--accent` のみ（朱→藍）。Dark(宵) と構造・タイポ・余白は A と共通。

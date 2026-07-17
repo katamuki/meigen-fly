@@ -95,4 +95,4 @@ Light/Dark の全コンポーネント一覧は `proposal-b/preview.html`、実�
   - **いいね**: `<form method="post" action="/api/likes/{id}">` を `hx-post` + `hx-swap="outerHTML"` でフォーム自身を差し替え。JS無効時はフォームの通常POSTで成立（`client_uuid` なしの best-effort）。`client_uuid` は外部JSが `htmx:configRequest` で付与（[ADR 006](../decisions/006-like-count-cache-strategy.md)）。
 - **フォント**: 日本語Webフォントは重いため、**system-ui系スタックを前提**（`--font-sans` / `--font-serif`）。見出し・引用は端末搭載の明朝（`Hiragino Mincho ProN` / `Yu Mincho` 等）にフォールバック。`Noto Serif JP` はスタック末尾に置くのみで、本体では読み込まない。
 - **アニメーション**: Cloudflareエッジキャッシュ前提の静的HTML。凝った動きより表示速度・可読性を優先。
-- **OG画像**: 名言個別は `/quotes/{slug または q{id}}/og.png` を宵ベースで動的生成（`proposal-b/og/og.html` を 1200×630 に画像化）。文字数閾値・80字超の扱い・本番コンテナへの `Noto Serif JP` 導入は D8では決めず **D5（OG画像生成）**で扱う（[project-plan.md](../project-plan.md) §7）。
+- **OG画像**: 名言個別はサイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとして `/quotes/{slug または q{id}}/og.png` を生成する（`proposal-b/og/og.html` を 1200×630 に画像化）。文字数閾値・80字超の扱い・本番コンテナへの `Noto Serif JP` 導入は D8では決めず **D5（OG画像生成）**で扱う（[project-plan.md](../project-plan.md) §7）。

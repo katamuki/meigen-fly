@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-15（ADRを単一正本とする整理。計画書内の重複記述を削減し、ADR 008・012・013・015の過剰品質箇所を簡略化）
+> - 更新日: 2026-07-17（本番確認・移行判断を反映し、SQLite移行対象と定期処理を確定）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -122,26 +122,28 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 
 | PostgreSQL要素 | SQLiteでの扱い |
 |---|---|
-| `SERIAL` / `BIGSERIAL` | 原則 `INTEGER PRIMARY KEY`。SQLiteの `AUTOINCREMENT` はID再利用を厳密に禁止したいテーブルだけ使う |
+| `SERIAL` / `BIGSERIAL` | 原則 `INTEGER PRIMARY KEY`。`AUTOINCREMENT`は公開qidのID再利用を防ぐ`quotes`だけに使う |
 | ENUM（`date_precision`, `life_era`） | `TEXT` + `CHECK`制約 |
 | `TIMESTAMPTZ` | **固定長UTC `TEXT`**（`YYYY-MM-DDTHH:MM:SS.ffffffZ`）。明示codecで入出力し、別形式を混在させない（D17/ADR 011） |
 | `JSONB` | アプリ層でJOIN構築（RPCのJSONB返却は廃止しPython側で組む） |
 | `EXCLUDE`制約（生誕国排他） | アプリ層 or 部分UNIQUEインデックスで代替 |
 | RLS / `is_admin()` | 書き込みは原則Admin経路のみ（アプリ層で担保）。**例外は匿名いいねの専用書き込み経路のみ**（§3.2-2 / D9） |
 | PGroongaインデックス | 初期は`LIKE`部分一致。検索インデックスは性能上必要になった場合だけ追加（第7章） |
-| マテビュー/集計ビュー | SQLiteでは通常テーブル + 定期再計算バッチ、またはリアルタイムSQLへ置換。小規模データのためフェーズ1で削除可能性を判定 |
+| マテビュー/集計ビュー | count系は原本に対するリアルタイムSQLへ置換し、rankingだけは3つのsnapshot表を定期再計算する |
 | RPC（`get_quote_rankings` 等） | FastAPIサービス層のSQL関数に移植 |
 
 ### 対象テーブル一覧
-アプリデータとして移行する19テーブル:
+SQLiteで扱うテーブルは、原本・関連13表 + ranking snapshot 3表の計16表:
 
-`authors` / `sources` / `source_types` / `source_type_assignments` / `characters` / `quotes` / `categories` / `professions` / `author_professions` / `countries` / `author_country` / `quote_categories` / `quote_likes` / `legacy_votes` / `ranking_parameters` / `quote_ranking_scores` / `author_rankings` / `category_rankings` / `ranking_refresh_logs`
+`authors` / `sources` / `source_types` / `source_type_assignments` / `characters` / `quotes` / `categories` / `professions` / `author_professions` / `countries` / `author_country` / `quote_categories` / `quote_likes` / `quote_ranking_scores` / `author_rankings` / `category_rankings`
+
+現行の`legacy_votes`はquote別の値を`quotes.legacy_vote_count`へ統合し、独立表を作らない。`ranking_parameters`の4係数は型付きCLI設定へ同値移行し、`ip_daily_limit`はアプリ側rate limit設定へ分離する。`ranking_refresh_logs`は移行せず、新DBに履歴表を作らない。定期処理の成否はstderr・外部監視・heartbeatで扱う。
 
 既存の`admin_users`は初期認証に利用せず、移行必須対象から除外する。将来、複数管理者の権限差が必要になった場合に、ADR 012に従って新しい認可モデルとして再設計する。
 
-### 集計ビュー・マテビュー・RPC移植対象
+### 集計ビュー・マテビュー・RPCの置換対象
 
-現行の集計ビュー/MVは次を棚卸し対象に含める。ただし全てをそのまま移植するのではなく、SQLite上でリアルタイムSQLに置換できるかをフェーズ1で判定する。
+現行の集計ビュー/MVはそのまま移植しない。count系と管理KPIは必要な値だけ原本へのリアルタイムSQLで算出し、rankingは原本から3つのsnapshot表だけを再計算する。rankingの中間MVと更新履歴viewは作らない。
 
 - `categories_with_counts`（現行は最終的にMV）
 - `quote_ranking_scores_mv`（ランキング計算。`legacy_votes` を加算）
@@ -151,9 +153,16 @@ source_types / countries（著者・出典フォーム内から利用。専用�
 - `view_admin_kpi_counts`
 - `view_admin_ranking_refresh_logs`
 
-`pg_cron` の少なくとも2ジョブ（ランキング、カテゴリ件数）は、バックアップを含む全定期処理とともにsupercronicからCLIとして実行する。初期はUvicorn 1 workerとし、FastAPI startup/lifespanではスケジューラを起動しない。全ジョブに多重起動ロック・timeout・失敗通知を設ける（D6/ADR 005）。
+現行`pg_cron`ジョブから移す定期処理はranking CLIだけとし、supercronicから実行する。カテゴリ件数はリアルタイムSQLで算出するためrefresh jobを作らない。初期はUvicorn 1 workerとし、FastAPI startup/lifespanではスケジューラを起動しない。ranking CLIには多重起動ロック・timeout・失敗通知を設ける（D6/ADR 005）。
 
-> データ規模（決定記録002）: 名言 約2,100件・著者 約890件・全体 約3,000行と**小規模**。移行・検索性能上の懸念は小さい。
+> データ規模（2026-07-17本番確認）: 名言1,831件、著者774件、likes 7,591件。中間表・snapshot・履歴等を含む現行20表の合計は20,833行（`admin_users`を除くアプリデータは20,831行）で、引き続き小規模である。
+
+### URL互換性
+
+- 現行IDを保持し、`quotes`だけに`AUTOINCREMENT`を使って、確認済みの高水位3,197を引き継ぐ。他テーブルには`AUTOINCREMENT`を付けない。
+- qid専用列は保存せず、`quotes.id`から`q{id}`を決定的に生成する。
+- `quotes.slug`はnullable UNIQUEのまま保持する。現行1,831件中未設定の1,825件は`q{id}`をcanonicalとし、slugの補完・NOT NULL化・redirect表追加は行わない。
+- `quotes.enable`は0/1 NNへ同値移行し、通常公開経路は1だけに限定する。`/api/quotes`のパラメータ省略時に非公開も返す互換は引き継がない。
 
 ### 移行スクリプト
 - Supabase(PostgreSQL) から `pg_dump` / CSVエクスポート → 変換 → SQLite投入するビルドスクリプトを用意。
@@ -239,7 +248,7 @@ meigen-fly/
 
 ### フェーズ2: データ移行
 - [ ] Supabase→SQLite 移行スクリプト（検索用派生インデックスは初期不要・D1）
-- [ ] `legacy_votes`・集計ビュー/MV・RPC群を含む移行対象の完全リスト化
+- [ ] 16表（`legacy_votes`は`quotes.legacy_vote_count`へ統合）と、集計ビュー/MV・RPC群の置換対象を移行設計へ反映
 - [ ] 移行データの整合性検証（件数・関連・文字化け）
 
 ### フェーズ3: 公開ページ実装

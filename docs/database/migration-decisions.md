@@ -2,6 +2,8 @@
 
 確認結果と推奨案は本番確認の実行後に記入し、判断はユーザーが記入する。この判断が完了するまで、SQLiteスキーマ、Alembic、移行スクリプト、アプリコードの実装へ進まない。
 
+**全19件判断済み（確定日: 2026-07-17）。**
+
 論点・既定案・分岐の詳細は[第4部§12](inventory-4-new-db-design.md)、確認項目A1〜A9・O1〜O4の内容は[第5部](inventory-5-production-checklist.md)を参照。
 
 ## 確認の実施状況
@@ -10,7 +12,7 @@
 - [x] O1〜O4(DB外確認): 2026-07-17に `verification/` 配下の記入テンプレート3件へ確認結果を記録済み。
 - [x] 確認結果の解析と「確認結果」「推奨案」欄の記入(タスクB): 2026-07-17完了。
 - [x] ユーザーによる「判断」欄の記入(18件+U1): 2026-07-17完了。
-- [ ] 判断結果の反映と `docs/project-plan.md` 修正候補6件の適用(タスクC)。
+- [x] 判断結果の反映と `docs/project-plan.md` 修正候補6件の適用(タスクC): 2026-07-17完了。
 
 | # | 論点 | 既定案 | 対応する確認項目 | 確認結果 | 推奨案 | 判断 |
 |---:|---|---|---|---|---|---|
@@ -33,3 +35,23 @@
 | 17 | 条件付き廃止object | 新構成へ持ち込まない | A9 + O2/O3 | repository外consumer・管理write・Realtime購読はなし。対象view/RPC/trigger/policy/PGroonga/cronの外部依存もなし。category/character countはdirect集計と一致する一方、長期未refreshのcountry/profession MVにはdirect集計との差がある。 | 条件付き対象は持ち込まず、必要機能だけ単純SQL/Pythonとranking CLIへ置換する。countは新DB原本からdirect算出し、RLS/GRANT/MV/PGroonga/DB cronは再作成しない。 | 推奨案を採用。 |
 | 18 | 管理KPI | 必要値だけdirect COUNT | A1/A9 + O2 | 管理KPI/log viewには各7 callsの痕跡があるが、利用者は運用者1名で外部consumerなし。必要値は総数・公開数・ranking更新時点等の小規模集計。 | 必要KPIだけdirect COUNT/MAXで算出し、専用view・集計表・refresh jobは作らない。不要な指標はUIごと除外する。 | 推奨案を採用。 |
 | U1 | Supabase権限是正 | O3結果後の別枠の現行運用判断 | O3 | broad default privilegeとMVの広いACLは非意図的。特に`SECURITY DEFINER`のranking refresh内部関数と公開2 overloadをanon/authenticatedが実行可能で、外部利用実績はないが高負荷処理・log増加を誘発できる。 | 現行DBで最低限、ranking refresh 3関数のanon/authenticated `EXECUTE`を早期にREVOKEする。移行まで現行運用が続くなら、default privilegeとMV ACLも別の承認済みsecurity作業で最小権限化する。 | 現行Supabaseの権限是正は行わない。本移行プロジェクトの対象外とする。 |
+
+## 実装フェーズへの引き継ぎ
+
+### 第4部の既定案との差分・条件の具体化
+
+- **#4 invalid likes:** 全件validかつ外部運用なしという確認結果でも、推奨された列削除は採用しない。第4部の既定案どおり`is_valid`を残し、invalid行も状態保持できる設計とする。
+- **#7 ranking係数:** 4つのranking係数は型付きCLI設定へ同値移行し、同じ設定表に混在していた`ip_daily_limit`はrankingから分離してアプリ側rate limit設定で扱う。
+- **#9 quote enable:** 0/1 NNへ同値移行し、通常公開経路は1だけに限定する。加えて、`/api/quotes`でパラメータ省略時に非公開も返していた互換は明示的に廃止する。
+- **#13 country code:** nullable 2〜3英字CHECKと通常索引を採用し、意味上の重複があるためUNIQUE化しない。移行時に大文字へ正規化する場合は、該当コードへの対応を記録する。
+- **#14 quote ID高水位:** `quotes`だけをAUTOINCREMENTとし、確認済みの高水位3,197を引き継ぐ。
+- **#15 category `updated_at`:** 新設列の初期値は現行`created_at`とする。移行日を一律のlastmodにはせず、以後の管理更新時に更新する。
+- **#16 snapshot列/sort:** 現行3 snapshotの指標を維持して原本から再計算し、同点時はIDを最終キーとする。現行snapshotのraw行は移さない。
+
+### 既定案どおり確定した項目
+
+#1、#2、#3、#5、#6、#8、#10、#11、#12、#17、#18は、第4部§12の既定案どおり確定した。#4も上記のとおり既定案を維持する。U1は、現行Supabaseの権限是正を行わず、本移行プロジェクトの対象外とする判断で確定した。
+
+### 実装開始時の作業
+
+実装フェーズでは、最初に原本・関連13表とranking snapshot 3表からなる16表のDDL、制約・索引を含む命名規約、Alembic revision、および移行手順を設計する。その際は、本判断シートの「判断」列と本節を設計判断の正とし、推奨案や第4部の未確定分岐より優先する。

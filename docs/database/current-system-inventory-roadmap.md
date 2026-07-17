@@ -4,7 +4,7 @@
 
 本ドキュメントは、上記指示書の作業を進めるためのフェーズ分割・成果物・完了条件を定める。実際の調査・設計はこのロードマップに沿って行う。
 
-> **状況(2026-07-17): 全フェーズ(0〜6)完了。** 成果物は目次([current-system-inventory.md](current-system-inventory.md))+第1〜5部としてコミット済み。実装前に残る本番確認・ユーザー判断の進捗は[migration-decisions.md](migration-decisions.md)で管理する。
+> **状況(2026-07-17): 全フェーズ(0〜6)完了。** 成果物は目次([current-system-inventory.md](current-system-inventory.md))+第1〜5部としてコミット済み。本番確認・ユーザー判断・計画書への反映を含む実装前作業もすべて完了し、確定記録は[migration-decisions.md](migration-decisions.md)で管理する。次はSQLiteスキーマ、Alembic、移行手順を設計する実装フェーズである。
 
 ## 前提とスコープ(要約)
 

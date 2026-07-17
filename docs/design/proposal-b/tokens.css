@@ -1,0 +1,90 @@
+/* ============================================================
+   名言集.com — 提案B「墨（藍）× 宵」デザイントークン
+   Light = 墨 / accent 藍  ·  Dark = 宵 / accent 金
+   提案Aとの差分は Light の --accent 系のみ（藍に差し替え）。
+   Dark（宵）は共通。構造・タイポ・余白もすべて共通。
+   ------------------------------------------------------------
+   ダークの適用：OS追従 / <html data-theme="dark"> / class="theme-dark"
+   ============================================================ */
+
+:root {
+  /* --- Color: Light（墨 / 藍） --- */
+  --bg:            #F7F3EA;
+  --surface:       #FDFBF6;
+  --ink:           #1A1714;
+  --muted:         #6B6259;
+  --subtle:        #9A8F80;
+  --line:          rgba(26,23,20,.10);
+  --chip-bg:       #F1EADF;
+  --chip-border:   rgba(26,23,20,.08);
+  --accent:        #2C5A8C;   /* 藍：いいね・強調・リンク */
+  --accent-ink:    #FFFFFF;
+  --accent-soft:   #C6D6E6;   /* 藍の淡い枠線 */
+  --accent-wash:   #FFFFFF;
+  --avatar-bg:     #E1E9F1;   /* 藍みの著者イニシャル地 */
+  --mark:          #FBE6B0;
+  --shadow-card:   0 1px 0 rgba(26,23,20,.03);
+  --shadow-accent: 0 4px 14px -4px rgba(44,90,140,.5);
+
+  /* --- Typography --- */
+  --font-serif: 'Hiragino Mincho ProN','Yu Mincho','YuMincho','Noto Serif JP',serif;
+  --font-sans:  system-ui,-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;
+  --fs-display:   34px;  --lh-display: 1.15;
+  --fs-quote-lg:  28px;  --lh-quote:   1.85;
+  --fs-quote:     22px;
+  --fs-h2:        20px;
+  --fs-body:      15px;  --lh-body:    1.9;
+  --fs-small:     13px;
+  --fs-caption:   11px;
+
+  /* --- Spacing --- */
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-6:24px; --sp-8:32px; --sp-12:48px; --sp-16:64px;
+
+  /* --- Radius --- */
+  --r-btn:8px; --r-card:12px; --r-pill:999px;
+
+  /* --- Layout --- */
+  --container-text: 720px;
+  --container-wide: 1080px;
+  --gutter: 16px;
+
+  color-scheme: light;
+}
+
+/* ============================================================
+   Dark（宵 / 金）— A と共通
+   ============================================================ */
+:root[data-theme="dark"],
+.theme-dark {
+  --bg:            #14110F;
+  --surface:       #1E1A17;
+  --ink:           #F0EBE3;
+  --muted:         #A69C8E;
+  --subtle:        #7C7264;
+  --line:          rgba(240,235,227,.10);
+  --chip-bg:       rgba(240,235,227,.06);
+  --chip-border:   rgba(240,235,227,.10);
+  --accent:        #C9A24B;
+  --accent-ink:    #14110F;
+  --accent-soft:   rgba(201,162,75,.40);
+  --accent-wash:   rgba(201,162,75,.12);
+  --avatar-bg:     #2A241F;
+  --mark:          #6B531F;
+  --shadow-card:   0 1px 0 rgba(0,0,0,.2);
+  --shadow-accent: 0 4px 14px -4px rgba(201,162,75,.45);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#14110F; --surface:#1E1A17; --ink:#F0EBE3; --muted:#A69C8E; --subtle:#7C7264;
+    --line:rgba(240,235,227,.10); --chip-bg:rgba(240,235,227,.06); --chip-border:rgba(240,235,227,.10);
+    --accent:#C9A24B; --accent-ink:#14110F; --accent-soft:rgba(201,162,75,.40);
+    --accent-wash:rgba(201,162,75,.12); --avatar-bg:#2A241F; --mark:#6B531F;
+    --shadow-card:0 1px 0 rgba(0,0,0,.2); --shadow-accent:0 4px 14px -4px rgba(201,162,75,.45);
+    color-scheme: dark;
+  }
+}
+
+.theme-light { color-scheme: light; }

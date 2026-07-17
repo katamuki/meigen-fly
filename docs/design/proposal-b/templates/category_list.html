@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% set nav = 'categories' %}
+{% block title %}カテゴリから名言を探す｜名言集.com{% endblock %}
+
+{% block content %}
+<nav class="mg-breadcrumb" aria-label="パンくず">
+  <a href="/">ホーム</a><span class="sep">/</span><span class="current">カテゴリ</span>
+</nav>
+
+<div class="mg-wide" style="padding-top:var(--sp-8);padding-bottom:var(--sp-12)">
+  <h1 class="mg-h1" style="margin-bottom:var(--sp-6)">カテゴリから探す</h1>
+  {# 2階層：大分類カードに小分類チップを内包 #}
+  <div class="mg-grid-3">
+    {% for parent in categories %}
+    <section class="mg-cat-card">
+      <div class="mg-cat-card__head">
+        <a class="mg-cat-card__title" href="/categories/{{ parent.slug }}/">{{ parent.name }}</a>
+        <span class="mg-hero__meta">{{ parent.total }}</span>
+      </div>
+      <div class="mg-cat-card__rule"></div>
+      <div class="mg-chips">
+        {% for child in parent.children %}
+        <a class="mg-chip" href="/categories/{{ child.slug }}/">{{ child.name }}</a>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set nav = 'home' %}
+{% block title %}名言集.com — 心に響く名言・格言のポータル{% endblock %}
+
+{% block content %}
+{# 注目名言ヒーロー #}
+<section class="mg-hero-band">
+  <div class="mg-text">
+    <p class="mg-eyebrow">本日の注目名言</p>
+    <a class="mg-hero__quote" href="/quotes/{{ featured.id }}/">{{ featured.text }}</a>
+    <div class="mg-hero__by">
+      <a class="mg-author" href="/authors/{{ featured.author.slug }}/">{{ featured.author.name }}</a>
+      <span class="mg-dot"></span>
+      <span class="mg-hero__meta">{{ featured.author.occupation }} · {{ featured.author.country }}</span>
+      {% with quote = featured, size = 'pill' %}{% include "partials/like_button.html" %}{% endwith %}
+    </div>
+  </div>
+</section>
+
+<div class="mg-wide mg-cols">
+  {# 人気ランキング抜粋 #}
+  <section class="mg-col-main">
+    <div class="mg-section-head">
+      <h2 class="mg-h2">人気の名言</h2>
+      <a class="mg-more" href="/ranking/">ランキングを見る →</a>
+    </div>
+    <div class="mg-rank">
+      {% for q in ranking %}
+      <div class="mg-rank-row">
+        <span class="mg-rank-num{% if loop.index == 1 %} mg-rank-num--1{% endif %}">{{ loop.index }}</span>
+        <div class="mg-rank-row__q">
+          <a class="q" href="/quotes/{{ q.id }}/">{{ q.text }}</a>
+          <div class="by">{{ q.author.name }}</div>
+        </div>
+        {% with quote = q %}{% include "partials/like_button.html" %}{% endwith %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# カテゴリ + 新着 #}
+  <aside class="mg-col-side">
+    <h2 class="mg-h2">カテゴリから探す</h2>
+    <div class="mg-chips" style="margin:var(--sp-4) 0 var(--sp-8)">
+      {% for c in top_categories %}<a class="mg-chip" href="/categories/{{ c.slug }}/">{{ c.name }}</a>{% endfor %}
+      <a class="mg-chip mg-chip--accent" href="/categories/">すべて →</a>
+    </div>
+
+    <h2 class="mg-h2">新着名言</h2>
+    <div class="mg-stack" style="margin-top:var(--sp-4)">
+      {% for q in latest %}
+      <article class="mg-quote-card mg-quote-card--compact">
+        <a class="mg-quote" href="/quotes/{{ q.id }}/">{{ q.text }}</a>
+        <div class="by">{{ q.author.name }} · {{ q.created_ago }}</div>
+      </article>
+      {% endfor %}
+    </div>
+  </aside>
+</div>
+{% endblock %}

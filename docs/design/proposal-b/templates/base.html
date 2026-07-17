@@ -1,0 +1,39 @@
+{# ============================================================
+   名言集.com — ベースレイアウト（提案A 墨×宵 確定）
+   Jinja2 + HTMX / CSP対応：インライン style/script なし
+   静的アセットは {{ static(...) }} を各プロジェクトのヘルパに合わせて差し替え
+   ============================================================ #}
+<!DOCTYPE html>
+<html lang="ja"{% if theme %} data-theme="{{ theme }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}名言集.com{% endblock %}</title>
+  <meta name="description" content="{% block meta_description %}約1,800の名言と770人の著者。人生・恋愛・仕事の言葉をカテゴリ・著者・出典から探せる名言ポータル。{% endblock %}">
+  <link rel="canonical" href="{% block canonical %}{{ request.url }}{% endblock %}">
+
+  {# --- OGP（名言個別でオーバーライド） --- #}
+  <meta property="og:site_name" content="名言集.com">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+  <meta property="og:title" content="{% block og_title %}名言集.com{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}名言と著者を集めたポータル{% endblock %}">
+  <meta property="og:image" content="{% block og_image %}{{ static('img/og-default.png') }}{% endblock %}">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="stylesheet" href="{{ static('css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ static('css/components.css') }}">
+  {# HTMX（検索・いいねのみで使用。無くてもページは成立） #}
+  <script src="{{ static('js/htmx.min.js') }}" defer></script>
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  {% include "partials/header.html" %}
+
+  <main id="main">
+    {% block content %}{% endblock %}
+  </main>
+
+  {% include "partials/footer.html" %}
+  {% include "partials/tabbar.html" %}
+</body>
+</html>

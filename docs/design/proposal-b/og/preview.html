@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OG画像 3パターン確認（短文/長文/英文）</title>
+<style>
+  /* ==== OG本体のスタイルを内包（og.html と同一）==== */
+  :root {
+    --bg:#F7F3EA; --surface:#FDFBF6; --ink:#1A1714; --muted:#6B6259;
+    --subtle:#9A8F80; --accent:#2C5A8C; --line:rgba(26,23,20,.12);
+    --font-serif:'Hiragino Mincho ProN','Yu Mincho','YuMincho','Noto Serif JP',serif;
+    --font-sans:system-ui,-apple-system,'Hiragino Sans','Yu Gothic',sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  .og { width:1200px; height:630px; position:relative; overflow:hidden; background:var(--bg); color:var(--ink); font-family:var(--font-sans); padding:84px 96px; display:flex; flex-direction:column; }
+  .og::before { content:""; position:absolute; inset:40px; border:1px solid var(--line); border-radius:6px; background:linear-gradient(180deg, rgba(253,251,246,.55), rgba(253,251,246,0) 40%); pointer-events:none; }
+  .og__hairline { position:absolute; left:96px; top:110px; bottom:150px; width:2px; background:var(--accent); opacity:.9; }
+  .og__body { flex:1; display:flex; align-items:center; padding-left:34px; }
+  .og-quote { font-family:var(--font-serif); color:var(--ink); font-weight:600; letter-spacing:.04em; text-indent:-.5em; text-wrap:pretty; max-width:100%; }
+  .og-quote::before { content:"「"; }
+  .og-quote::after { content:"」"; }
+  .og--short .og-quote { font-size:96px; line-height:1.4; }
+  .og--medium .og-quote { font-size:66px; line-height:1.55; }
+  .og--long .og-quote { font-size:46px; line-height:1.72; }
+  .og-quote:lang(en) { letter-spacing:0; text-indent:0; }
+  .og--short .og-quote:lang(en) { font-size:104px; line-height:1.25; }
+  .og--medium .og-quote:lang(en) { font-size:72px; line-height:1.35; }
+  .og--long .og-quote:lang(en) { font-size:50px; line-height:1.5; }
+  .og__foot { display:flex; align-items:flex-end; justify-content:space-between; padding-left:34px; gap:32px; }
+  .og-author { font-family:var(--font-serif); color:var(--ink); font-size:36px; font-weight:600; letter-spacing:.06em; }
+  .og-author::before { content:"— "; color:var(--subtle); font-family:var(--font-sans); font-weight:400; }
+  .og__brand { display:flex; align-items:center; gap:18px; flex:none; }
+  .og__seal { width:64px; height:64px; border-radius:10px; background:var(--accent); color:var(--bg); display:flex; align-items:center; justify-content:center; font-family:var(--font-serif); font-size:34px; font-weight:600; box-shadow:0 6px 18px -8px rgba(44,90,140,.6); }
+  .og__brandname { font-family:var(--font-serif); font-size:30px; font-weight:600; letter-spacing:.06em; color:var(--ink); }
+  .og__brandname b { color:var(--accent); font-weight:600; }
+
+  /* ==== プレビュー面（本番不要）==== */
+  body { background:#e9e5dd; font-family:system-ui,sans-serif; padding:32px; }
+  h1 { font-size:18px; color:#1a1a1a; margin-bottom:4px; }
+  p.note { font-size:13px; color:#555; margin-bottom:24px; max-width:760px; line-height:1.6; }
+  .case { margin-bottom:28px; }
+  .case > .lbl { font:600 12px system-ui; color:#444; margin-bottom:8px; display:flex; gap:8px; align-items:center; }
+  .case > .lbl code { background:#fff; border:1px solid #ddd; border-radius:4px; padding:1px 6px; font-size:11px; }
+  /* 縮小表示（タイムライン想定）を右に添える */
+  .row { display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
+  .full { box-shadow:0 8px 30px -12px rgba(0,0,0,.3); }
+  .mini { width:400px; height:210px; overflow:hidden; box-shadow:0 6px 20px -10px rgba(0,0,0,.3); flex:none; }
+  .mini .og { transform:scale(.3333); transform-origin:top left; }
+  .mini-wrap > .cap { font:11px system-ui; color:#777; margin-bottom:6px; }
+</style>
+</head>
+<body>
+  <h1>名言集.com — OG画像テンプレート（1200×630）</h1>
+  <p class="note">3つの文字量パターンを、実寸（1200×630）＋タイムライン縮小（400×210, 33%）で確認。<code>&lt;html class&gt;</code> ではなく各カードのルート要素に <code>og--short / og--medium / og--long</code> を付与しています。本番は文字数でサーバがクラスを選択。</p>
+
+  <!-- a. 短文 -->
+  <div class="case">
+    <div class="lbl">a. 短文 <code>og--short</code>（例：初心忘るべからず）</div>
+    <div class="row">
+      <div class="full"><div class="og og--short"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">初心忘るべからず</p></div><div class="og__foot"><div class="og-author">世阿弥</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
+      <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--short"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">初心忘るべからず</p></div><div class="og__foot"><div class="og-author">世阿弥</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>
+    </div>
+  </div>
+
+  <!-- b. 長文 -->
+  <div class="case">
+    <div class="lbl">b. 長文 <code>og--long</code>（80字程度）</div>
+    <div class="row">
+      <div class="full"><div class="og og--long"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">雨ニモマケズ　風ニモマケズ　雪ニモ夏ノ暑サニモマケヌ　丈夫ナカラダヲモチ　慾ハナク　決シテ瞋ラズ　イツモシヅカニワラッテヰル</p></div><div class="og__foot"><div class="og-author">宮沢賢治</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
+      <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--long"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">雨ニモマケズ　風ニモマケズ　雪ニモ夏ノ暑サニモマケヌ　丈夫ナカラダヲモチ　慾ハナク　決シテ瞋ラズ　イツモシヅカニワラッテヰル</p></div><div class="og__foot"><div class="og-author">宮沢賢治</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>
+    </div>
+  </div>
+
+  <!-- c. 英文 -->
+  <div class="case">
+    <div class="lbl">c. 英文 <code>og--short</code> + <code>lang="en"</code>（例：Stay hungry. Stay foolish.）</div>
+    <div class="row">
+      <div class="full"><div class="og og--short"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="en">Stay hungry. Stay foolish.</p></div><div class="og__foot"><div class="og-author">Steve Jobs</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
+      <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--short"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="en">Stay hungry. Stay foolish.</p></div><div class="og__foot"><div class="og-author">Steve Jobs</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>
+    </div>
+  </div>
+
+</body>
+</html>

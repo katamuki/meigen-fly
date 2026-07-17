@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B案 本番テンプレート レンダー確認</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="components.css">
+</head>
+<body>
+<header class="mg-header">
+  <a class="mg-logo" href="#">名言集<span>.com</span></a>
+  <nav class="mg-nav mg-nav--desktop"><a aria-current="page">名言</a><a>著者</a><a>カテゴリ</a><a>ランキング</a><a>ランダム</a></nav>
+  <span class="mg-header__spacer"></span>
+  <form class="mg-search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input class="mg-search__input" type="search" placeholder="名言・著者を検索"></form>
+  <button class="mg-iconbtn mg-theme-toggle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
+</header>
+
+<main>
+<section class="mg-hero-band">
+  <div class="mg-text">
+    <p class="mg-eyebrow">本日の注目名言</p>
+    <a class="mg-hero__quote" href="#">「明日死ぬかのように生きよ。永遠に生きるかのように学べ。」</a>
+    <div class="mg-hero__by">
+      <a class="mg-author" href="#">マハトマ・ガンジー</a>
+      <span class="mg-dot"></span><span class="mg-hero__meta">政治指導者 · インド</span>
+      <button class="mg-like mg-like--pill"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>1,204</button>
+    </div>
+  </div>
+</section>
+
+<div class="mg-wide mg-cols">
+  <section class="mg-col-main">
+    <div class="mg-section-head"><h2 class="mg-h2">人気の名言</h2><a class="mg-more" href="#">ランキングを見る →</a></div>
+    <div class="mg-rank" style="margin-top:12px">
+      <div class="mg-rank-row"><span class="mg-rank-num mg-rank-num--1">1</span><div class="mg-rank-row__q"><a class="q" href="#">為せば成る、為さねば成らぬ何事も</a><div class="by">上杉鷹山</div></div><button class="mg-like"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>988</button></div>
+      <div class="mg-rank-row"><span class="mg-rank-num">2</span><div class="mg-rank-row__q"><a class="q" href="#">我思う、ゆえに我あり</a><div class="by">ルネ・デカルト</div></div><button class="mg-like"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>911</button></div>
+    </div>
+  </section>
+  <aside class="mg-col-side">
+    <h2 class="mg-h2">カテゴリから探す</h2>
+    <div class="mg-chips" style="margin:16px 0 32px"><a class="mg-chip">人生</a><a class="mg-chip">恋愛</a><a class="mg-chip">仕事・成功</a><a class="mg-chip">努力</a><a class="mg-chip mg-chip--accent">すべて →</a></div>
+    <h2 class="mg-h2">新着名言</h2>
+    <div class="mg-stack" style="margin-top:16px">
+      <article class="mg-quote-card mg-quote-card--compact"><a class="mg-quote" href="#">道は近きにあり、而るを遠きに求む</a><div class="by">孟子 · 3時間前</div></article>
+    </div>
+  </aside>
+</div>
+
+<article class="mg-text">
+  <div class="mg-hero">
+    <h1 class="mg-hero__quote">「明日死ぬかのように生きよ。永遠に生きるかのように学べ。」</h1>
+    <div class="mg-hero__rule"></div>
+    <a class="mg-author" href="#" style="font-size:13px">マハトマ・ガンジー</a>
+    <div class="mg-hero__source">出典：獄中書簡 / 1930年</div>
+    <div class="mg-actions">
+      <button class="mg-like mg-like--solid"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>いいね<span class="count">1,204</span></button>
+      <a class="mg-iconbtn" href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8h16v-8M12 3v13M7 8l5-5 5 5"/></svg></a>
+    </div>
+    <div class="mg-chips" style="justify-content:center;margin-top:24px"><a class="mg-chip">人生</a><a class="mg-chip">学び</a><a class="mg-chip">努力</a></div>
+  </div>
+  <a class="mg-author-card" href="#"><span class="mg-avatar">ガ</span><div class="mg-author-card__body"><div class="mg-author">マハトマ・ガンジー</div><div class="mg-author-card__meta">政治指導者・弁護士 · インド · 1869–1948</div></div><span class="mg-chip mg-chip--accent">著者の名言 132件 →</span></a>
+</article>
+
+<div class="mg-wide" style="padding-bottom:48px">
+  <h2 class="mg-h2" style="margin:8px 0 16px">カテゴリ（2階層）</h2>
+  <div class="mg-grid-3">
+    <section class="mg-cat-card"><div class="mg-cat-card__head"><a class="mg-cat-card__title" href="#">人生・生き方</a><span class="mg-hero__meta">412</span></div><div class="mg-cat-card__rule"></div><div class="mg-chips"><a class="mg-chip">人生</a><a class="mg-chip">幸福</a><a class="mg-chip">運命</a><a class="mg-chip">無常</a></div></section>
+    <section class="mg-cat-card"><div class="mg-cat-card__head"><a class="mg-cat-card__title" href="#">仕事・成功</a><span class="mg-hero__meta">368</span></div><div class="mg-cat-card__rule"></div><div class="mg-chips"><a class="mg-chip">努力</a><a class="mg-chip">成功</a><a class="mg-chip">挑戦</a></div></section>
+    <section class="mg-cat-card"><div class="mg-cat-card__head"><a class="mg-cat-card__title" href="#">愛・人間関係</a><span class="mg-hero__meta">295</span></div><div class="mg-cat-card__rule"></div><div class="mg-chips"><a class="mg-chip">恋愛</a><a class="mg-chip">友情</a><a class="mg-chip">家族</a></div></section>
+  </div>
+  <nav class="mg-pagination" style="margin-top:32px"><a class="mg-page">‹</a><a class="mg-page is-active" aria-current="page">1</a><a class="mg-page">2</a><a class="mg-page">3</a><span class="mg-page__ellipsis">…</span><a class="mg-page">93</a><a class="mg-page">›</a></nav>
+</div>
+</main>
+
+<footer class="mg-footer"><div class="mg-wide mg-footer__inner"><a class="mg-logo" href="#">名言集<span>.com</span></a><nav class="mg-footer__nav"><a>About</a><a>Privacy</a><a>Terms</a><a>ランダム名言</a></nav></div></footer>
+<nav class="mg-tabbar"><a class="mg-tab" aria-current="page"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg><span>ホーム</span></a><a class="mg-tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h5"/></svg><span>名言</span></a><a class="mg-tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg><span>著者</span></a><a class="mg-tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>ランキング</span></a></nav>
+</body>
+</html>

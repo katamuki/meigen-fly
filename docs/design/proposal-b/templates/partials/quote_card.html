@@ -1,0 +1,15 @@
+{# 名言カード（注目/一覧 共通・情報量で variant 切替）
+   引数: quote = {id, text, author{name,slug}, categories[], likes, liked}
+        variant = 'featured' | 'list'（省略時 list） #}
+<article class="mg-quote-card{% if variant == 'list' %} mg-quote-card--list{% endif %}">
+  <a class="mg-quote" href="/quotes/{{ quote.id }}/">{{ quote.text }}</a>
+  <div class="mg-quote-card__foot">
+    <a class="mg-author" href="/authors/{{ quote.author.slug }}/">{{ quote.author.name }}</a>
+    {% include "partials/like_button.html" with context %}
+  </div>
+  {% if quote.categories %}
+  <div class="mg-chips" style="margin-top:var(--sp-3)">
+    {% for c in quote.categories %}<a class="mg-chip" href="/categories/{{ c.slug }}/">{{ c.name }}</a>{% endfor %}
+  </div>
+  {% endif %}
+</article>

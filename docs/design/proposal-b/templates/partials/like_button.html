@@ -1,0 +1,11 @@
+{# いいねボタン（HTMXでPOST→自身を差し替え。JSなしでも通常POSTで成立）
+   引数: quote{id,likes,liked} / size = 'pill'|'solid'（省略時 素） #}
+<button class="mg-like{% if size == 'pill' %} mg-like--pill{% elif size == 'solid' %} mg-like--solid{% endif %}{% if quote.liked %} is-liked{% endif %}"
+        type="button"
+        hx-post="/quotes/{{ quote.id }}/like/"
+        hx-swap="outerHTML"
+        aria-pressed="{{ 'true' if quote.liked else 'false' }}"
+        aria-label="いいね">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>
+  {% if size == 'solid' %}いいね<span class="count">{{ quote.likes|comma }}</span>{% else %}{{ quote.likes|comma }}{% endif %}
+</button>

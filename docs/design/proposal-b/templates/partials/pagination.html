@@ -1,0 +1,18 @@
+{# ページネーション（aria-currentで現在ページ。全てリンク＝JS不要）
+   引数: page{number,has_prev,has_next,prev,next}, pages=[番号 or None(=…)], base_url #}
+<nav class="mg-pagination" aria-label="ページ送り">
+  <a class="mg-page{% if not page.has_prev %} is-disabled{% endif %}"
+     href="{% if page.has_prev %}{{ base_url }}?page={{ page.prev }}{% else %}#{% endif %}"
+     aria-label="前へ"{% if not page.has_prev %} aria-disabled="true"{% endif %}>‹</a>
+  {% for p in pages %}
+    {% if p %}
+      <a class="mg-page{% if p == page.number %} is-active{% endif %}"
+         href="{{ base_url }}?page={{ p }}"{% if p == page.number %} aria-current="page"{% endif %}>{{ p }}</a>
+    {% else %}
+      <span class="mg-page__ellipsis">…</span>
+    {% endif %}
+  {% endfor %}
+  <a class="mg-page{% if not page.has_next %} is-disabled{% endif %}"
+     href="{% if page.has_next %}{{ base_url }}?page={{ page.next }}{% else %}#{% endif %}"
+     aria-label="次へ"{% if not page.has_next %} aria-disabled="true"{% endif %}>›</a>
+</nav>

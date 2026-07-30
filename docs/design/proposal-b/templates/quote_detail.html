@@ -5,7 +5,7 @@
 {% block meta_description %}{{ quote.text }}（{{ quote.author.name }}）。名言集.comで著者・カテゴリ・出典から関連する言葉を探せます。{% endblock %}
 {% block og_title %}{{ quote.author.name }}の名言｜名言集.com{% endblock %}
 {% block og_description %}{{ quote.text }}{% endblock %}
-{# 名言個別のOG画像は名言ごとに動的生成（下記 og.html を画像化） #}
+{# 名言個別のOG画像はADR 018に従いPillowでオンデマンド生成 #}
 {% block og_image %}{{ absolute_url('/quotes/' ~ (quote.slug or 'q' ~ quote.id) ~ '/og.png') }}{% endblock %}
 
 {% block content %}

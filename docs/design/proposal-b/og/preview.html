@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OG画像 3パターン確認（短文/長文/英文）</title>
+<title>OG画像 5パターン確認（短文/中文/長文/80超/英文）</title>
 <style>
   /* ==== OG本体のスタイルを内包（og.html と同一）==== */
   :root {
@@ -51,8 +51,8 @@
 </style>
 </head>
 <body>
-  <h1>名言集.com — OG画像テンプレート（1200×630）</h1>
-  <p class="note">3つの文字量パターンを、実寸（1200×630）＋タイムライン縮小（400×210, 33%）で確認。<code>&lt;html class&gt;</code> ではなく各カードのルート要素に <code>og--short / og--medium / og--long</code> を付与しています。本番は文字数でサーバがクラスを選択。</p>
+  <h1>名言集.com — OG画像 視覚仕様（1200×630）</h1>
+  <p class="note">ADR 018の表示幅3段階と80超の省略を、実寸（1200×630）＋タイムライン縮小（400×210, 33%）で確認。本番はこのHTMLを画像化せず、Pillowが同じ視覚仕様で描画します。表示幅は全角を1、半角を0.5として、<code>short &lt;=20 / medium &lt;=40 / long &lt;=80</code>。80超は「…」を含め80以内へ省略します。</p>
 
   <!-- a. 短文 -->
   <div class="case">
@@ -63,18 +63,36 @@
     </div>
   </div>
 
-  <!-- b. 長文 -->
+  <!-- b. 中文 -->
   <div class="case">
-    <div class="lbl">b. 長文 <code>og--long</code>（80字程度）</div>
+    <div class="lbl">b. 中文 <code>og--medium</code>（表示幅27）</div>
+    <div class="row">
+      <div class="full"><div class="og og--medium"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">明日死ぬかのように生きよ。永遠に生きるかのように学べ。</p></div><div class="og__foot"><div class="og-author">マハトマ・ガンジー</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
+      <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--medium"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">明日死ぬかのように生きよ。永遠に生きるかのように学べ。</p></div><div class="og__foot"><div class="og-author">マハトマ・ガンジー</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>
+    </div>
+  </div>
+
+  <!-- c. 長文 -->
+  <div class="case">
+    <div class="lbl">c. 長文 <code>og--long</code>（表示幅62）</div>
     <div class="row">
       <div class="full"><div class="og og--long"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">雨ニモマケズ　風ニモマケズ　雪ニモ夏ノ暑サニモマケヌ　丈夫ナカラダヲモチ　慾ハナク　決シテ瞋ラズ　イツモシヅカニワラッテヰル</p></div><div class="og__foot"><div class="og-author">宮沢賢治</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
       <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--long"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">雨ニモマケズ　風ニモマケズ　雪ニモ夏ノ暑サニモマケヌ　丈夫ナカラダヲモチ　慾ハナク　決シテ瞋ラズ　イツモシヅカニワラッテヰル</p></div><div class="og__foot"><div class="og-author">宮沢賢治</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>
     </div>
   </div>
 
-  <!-- c. 英文 -->
+  <!-- d. 80超 -->
   <div class="case">
-    <div class="lbl">c. 英文 <code>og--short</code> + <code>lang="en"</code>（例：Stay hungry. Stay foolish.）</div>
+    <div class="lbl">d. 80超 <code>og--long</code>（原文84→「…」込み表示幅80）</div>
+    <div class="row">
+      <div class="full"><div class="og og--long"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">長い名言であっても、伝えたい内容のすべてを画像の中へ詰め込むのではなく、読みやすい大きさを保ちながら要点を示し、続きはリンク先の本文で読めるようにすることが大…</p></div><div class="og__foot"><div class="og-author">表示確認用</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
+      <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--long"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="ja">長い名言であっても、伝えたい内容のすべてを画像の中へ詰め込むのではなく、読みやすい大きさを保ちながら要点を示し、続きはリンク先の本文で読めるようにすることが大…</p></div><div class="og__foot"><div class="og-author">表示確認用</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>
+    </div>
+  </div>
+
+  <!-- e. 英文 -->
+  <div class="case">
+    <div class="lbl">e. 英文 <code>og--short</code> + <code>lang="en"</code>（表示幅13）</div>
     <div class="row">
       <div class="full"><div class="og og--short"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="en">Stay hungry. Stay foolish.</p></div><div class="og__foot"><div class="og-author">Steve Jobs</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div>
       <div class="mini-wrap"><div class="cap">タイムライン縮小（33%）</div><div class="mini"><div class="og og--short"><div class="og__hairline"></div><div class="og__body"><p class="og-quote" lang="en">Stay hungry. Stay foolish.</p></div><div class="og__foot"><div class="og-author">Steve Jobs</div><div class="og__brand"><span class="og__seal">名</span><span class="og__brandname">名言集<b>.com</b></span></div></div></div></div></div>

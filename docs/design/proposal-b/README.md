@@ -20,6 +20,7 @@ b/
       header.html · footer.html · tabbar.html
       quote_card.html · like_button.html · pagination.html
       search_results.html   ← HTMX差し替えターゲット
+  og/                OG画像の視覚仕様・実寸プレビュー（本番HTMLテンプレートではない）
   render-check.html   静的レンダー確認用（本番不要）
   preview.html        Light/Dark コンポーネント一覧（本番不要）
 ```
@@ -54,7 +55,7 @@ D8決定は「OS追従＋手動切替の両対応」。CSP `script-src 'self'` �
 - いいねエンドポイント `POST /api/likes/{quote_id}`（ADR 006。`private, no-store` + Cloudflare Bypass）。
 - 検索フラグメント `GET /search/partial`（`HX-Request` 応答。`Vary: HX-Request`）。
 - 静的JS `static/js/theme.js`（上記仕様）、`static/js/htmx.min.js`。
-- 名言個別 OG画像：サイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとして `/quotes/{slug または q{id}}/og.png` を生成（`og/og.html` を画像化）。
+- OG画像：サイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとする。名言は `/quotes/{slug または q{id}}/og.png`、著者は `/authors/{slug}/og.png` でPillowによりオンデマンド生成する。`og/og.html` は画像化用の本番テンプレートではなく、Pillow実装の視覚仕様。文字量とキャッシュの詳細はADR 018。
 
 ## A との差分
 Light の `--accent` のみ（朱→藍）。Dark(宵) と構造・タイポ・余白は A と共通。

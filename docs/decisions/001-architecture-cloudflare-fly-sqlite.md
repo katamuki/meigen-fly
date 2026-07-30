@@ -46,7 +46,7 @@
 | `/professions`, `/sources`, `/characters` | `public, s-maxage=3600, max-age=600` | 1時間 / 10分 |
 | `/ranking` | `public, s-maxage=600, max-age=60` | 10分 / 1分 |
 | `/about`, `/privacy`, `/terms` | `public, s-maxage=604800, max-age=86400` | 1週間 / 1日 |
-| `/api/og?*`（OG画像） | `public, s-maxage=2592000, max-age=86400` | 30日 / 1日 |
+| `/quotes/{slugOrQid}/og.png`, `/authors/{slug}/og.png`（OG画像） | `public, s-maxage=2592000, max-age=86400` | 30日 / 1日（ADR 018） |
 | **`/random`** | `private, no-store` | 現行20件一覧を維持し、ランダム固定化を防ぐ |
 | **`/search`** | `private, no-store` | キャッシュしない |
 | **`/admin`, `/admin/*`, `/login`** | `private, no-store` | 管理認証フローをキャッシュしない |
@@ -302,7 +302,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] リリース前または大きな変更後にR2バックアップから復元し、`integrity_check`、Alembic revision、主要件数を確認できる
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
 - [ ] `/healthz` が`private, no-store`かつCloudflare Bypassで200を返し、外形監視とデプロイ後smoke testがorigin停止を検知する
-- [ ] OG画像 `/api/og?type=quote&id=...` がエッジキャッシュされる
+- [ ] 名言・著者OG画像がADR 018のURLで生成され、2回目の取得がエッジキャッシュHITになる
 - [ ] `fly ips list`にpublic IPがなくMachine実設定に公開serviceがなく、`*.fly.dev`と旧Anycast IPから到達できない
 - [ ] Tunnel routeとFastAPIが`www.meigensyu.com`だけを許可し、未知Hostを拒否する
 - [ ] 匿名いいねPOSTが`CF-Connecting-IP`から送信元IPを取得できる

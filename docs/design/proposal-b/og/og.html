@@ -2,16 +2,18 @@
 <html lang="ja" class="og--medium">
 <head>
 <meta charset="utf-8">
-<title>名言集.com OG画像テンプレート</title>
+<title>名言集.com OG画像 視覚仕様</title>
 <style>
   /* ==========================================================
      名言集.com — 名言個別OG画像（1200×630 固定）
      B案「墨（藍）× 宵」Light のトークンと同じ視覚言語
-     サーバ側でこのHTMLを 1200×630 PNG にレンダリング。
-     差し替え箇所:
+     本番はADR 018に従ってPillowで描画する。このHTMLは視覚仕様とプレビュー用。
+     確認時の差し替え箇所:
        - .og-quote  … 名言本文（鉤括弧はテンプレ側で付与）
        - .og-author … 著者名
-       - <html class> … 文字量に応じ og--short / og--medium / og--long
+       - <html class> … 表示幅に応じ og--short (<=20) /
+                              og--medium (>20, <=40) / og--long (>40, <=80)
+     80超は「…」を含め表示幅80以内へ省略して og--long で描画する。
      ==========================================================*/
   :root {
     --bg:        #F7F3EA;   /* 和紙 */

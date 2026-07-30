@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-17（本番確認・移行判断を反映し、SQLite移行対象と定期処理を確定）
+> - 更新日: 2026-07-19（D5のOG画像生成方式を確定）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -30,6 +30,8 @@
 | [`docs/decisions/014-cache-purge-boundaries.md`](decisions/014-cache-purge-boundaries.md) | 更新後の同期パージとTTL fallback |
 | [`docs/decisions/015-search-rate-limits.md`](decisions/015-search-rate-limits.md) | 検索UIの1文字検索・500ms debounce・アプリ側レート制限 |
 | [`docs/decisions/016-csp-htmx-rules.md`](decisions/016-csp-htmx-rules.md) | CSP許可先、インラインコード禁止、HTMX実装規約 |
+| [`docs/decisions/017-design-system-d8.md`](decisions/017-design-system-d8.md) | 提案B「墨（藍）× 宵」とデザインシステムの採用 |
+| [`docs/decisions/018-og-image-generation.md`](decisions/018-og-image-generation.md) | Pillowによる名言・著者OG画像のオンデマンド生成方針 |
 
 本計画書はこれらを束ねる上位文書。**確定事項の正本は各ADR**とし、本計画書は概要と参照だけを持つ。矛盾があればADRを優先し、計画書側を修正する。
 
@@ -61,7 +63,7 @@
 | 環境 | **ローカル開発環境 + 本番環境**。専用の検証環境は設けない |
 | 公開オリジン | **`https://www.meigensyu.com/`**（既存ドメインから切替） |
 
-> キャッシュパージ、検索レート制限、CSP/HTMXを含む確定事項の詳細は対応するADRを正本とする。残る未決論点は第7章のD5である。
+> キャッシュパージ、検索レート制限、CSP/HTMX、OG画像を含む確定事項の詳細は対応するADRを正本とする。第7章の設計判断はすべて確定済みである。
 
 ## 3. スコープ（何を作り変えるか）
 
@@ -90,7 +92,7 @@
 1. **日本語検索**（名言・著者）— 初期はSQLiteの単純な`LIKE`部分一致を使用し、実測後にFTS5を再検討（第7章・決定記録002）
 2. **匿名いいね**（`quote_likes`）— ⚠️ **本サイト唯一の「公開ユーザー書き込み」**で、§4・§9の「書き込みはAdminのみ」の明示的な例外。専用POSTエンドポイント + best-effort重複抑止 + いいね数のHTML焼き込み（10分TTL）。詳細はADR 006を正本とする
 3. **ランキング**（名言/著者/カテゴリ、いいね数・weight による定期再計算）
-4. **OG画像生成**（`/api/og`：名言・著者向け動的画像）
+4. **OG画像生成**（名言 `/quotes/{slugまたはq{id}}/og.png`、著者 `/authors/{slug}/og.png`。Pillowによるオンデマンド生成、ADR 018）
 5. **SEO**（sitemap.xml / robots.txt / 構造化データ / メタタグ / canonical）
 6. **広告**（サイト本体完成後に必要性を判断）
 7. **アクセス解析**（サイト本体完成後に任意導入。初期は通常のpage viewに限定）
@@ -206,7 +208,7 @@ meigen-fly/
 - **テンプレート**: `base.html` + 部分テンプレート。HTMX は検索・いいね・一覧の追加読込など**部分更新**に限定利用。
 - **サービス層**: 旧 Supabase RPC のロジック（ランキング取得・ランダム・出典集計・著者一覧）をSQLへ移植。JSONBはPython辞書で構築。
 
-## 7. 設計判断（確定事項と残る未決論点）
+## 7. 設計判断（すべて確定済み）
 
 各決定の内容・理由・再検討条件は対応するADRを正本とする。ここでは状態だけを一覧する。
 
@@ -216,7 +218,7 @@ meigen-fly/
 | D2 | SQLite永続化・バックアップ | ✅ 単一Machine + 日次R2バックアップ（[ADR 003](decisions/003-sqlite-daily-backup.md)） |
 | D3 | 管理者認証 | ✅ Cloudflare Access + 外部IdP（[ADR 012](decisions/012-admin-auth-cloudflare-access.md)） |
 | D4 | マイグレーション管理 | ✅ SQLAlchemy Core + Alembic（[ADR 004](decisions/004-alembic-migrations.md)） |
-| D5 | OG画像生成 | ⏳ **未決**。Pillow / 事前生成＋キャッシュ等を比較。D8から引き継ぐ検討事項: 80字超の名言の扱い（`og--xlong` 追加 or 切り詰め）と文字数閾値、本番コンテナへの `Noto Serif JP` 導入 |
+| D5 | OG画像生成 | ✅ Pillowによるオンデマンド生成 + Cloudflareキャッシュ。表示幅20/40/80の3段階、80超は省略（[ADR 018](decisions/018-og-image-generation.md)） |
 | D6 | worker数・定期ジョブ | ✅ Uvicorn 1 worker + supercronic（[ADR 005](decisions/005-uvicorn-supercronic-jobs.md)） |
 | D7 | SQLiteランタイム | ✅ Python標準`sqlite3`（[ADR 007](decisions/007-python-sqlite-runtime.md)） |
 | D8 | デザイン刷新の範囲 | ✅ 確定。提案B「墨（藍）× 宵」採用。デザインガイドを正本（[ADR 017](decisions/017-design-system-d8.md)、[design-guide](design/design-guide.md)） |
@@ -230,14 +232,14 @@ meigen-fly/
 | D16 | CSPとHTMX規約 | ✅ 共通CSP + HTMX危険機能の無効化（[ADR 016](decisions/016-csp-htmx-rules.md)） |
 | D17 | 日時のSQLite保存形式 | ✅ 固定長UTC `TEXT`（[ADR 011](decisions/011-sqlite-datetime-format.md)） |
 
-> 残る未決事項はD5（OG画像生成）のみ。D8はADR 017で確定。D9・D12・D15・D16は対応ADRを正本として確定済みである。
+> D1〜D17の設計判断はすべて確定済み。詳細は各ADRを正本とする。
 
 ## 8. 作業フェーズ（WBS / マイルストーン）
 
 ### フェーズ0: 準備・意思決定（本計画書の次）
 - [x] D9・D12・D15・D16の決定とADR化（2026-07-14、ADR 006・014・015・016）
 - [x] D8（デザイン刷新）の決定とADR化（2026-07-17、ADR 017。提案B採用・デザインガイド正本化）
-- [ ] 残る未決論点 D5 の決定
+- [x] D5（OG画像生成）の決定とADR化（2026-07-19、ADR 018。Pillowオンデマンド生成）
 - [ ] Python 3.14 + uvによる開発環境初期化（`pyproject.toml`・`uv.lock`）
 - [x] デザイン要件定義（D8。[design-guide](design/design-guide.md)）
 
@@ -259,7 +261,7 @@ meigen-fly/
 - [ ] いいね（D9）
 - [ ] SEO（sitemap/robots/構造化データ/canonical）
 - [ ] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + URL契約表に基づく正規化）
-- [ ] OG画像（D5）
+- [ ] OG画像（D5/ADR 018）
 - [ ] サイト本体完成後、必要な場合だけGA4を別フェーズで導入（通常のpage view、Privacy Policy、同意要件を確認）
 - [ ] サイト本体完成後、必要な場合だけAdSenseを別フェーズで導入（対象route、Privacy Policy、同意要件を確認）
 
@@ -301,7 +303,7 @@ meigen-fly/
 | 単一マシン/Volume障害 | R2の日次バックアップから手動復旧。正常時も最大約24時間の更新欠損を許容し、失敗を通知する（D2/ADR 003） |
 | 稼働中SQLiteの不整合バックアップ | 単純なファイルコピーを禁止し、Online Backup APIで一貫したバックアップを作成して`integrity_check`する（D2/ADR 003） |
 | URL変更によるSEO低下 | URL互換維持＋301リダイレクト（D10） |
-| OG画像/ランキングのメモリ負荷 | 事前生成・キャッシュ・軽量ライブラリ選定（D5/D6） |
+| OG画像/ランキングのメモリ負荷 | OG画像はPillowでキャッシュミス時のみ生成しCloudflareで30日キャッシュ。ランキングはD6に従いジョブを分離（ADR 018/005） |
 | 移行時のデータ欠損/文字化け | 件数・関連・サンプル比較の検証スクリプト |
 | 管理画面のセキュリティ | Cloudflare Access + 外部IdP側MFA、FastAPIでのJWT検証、CSRF、no-store（D3/ADR 012）。初期は単一管理者を想定 |
 | Cloudflare迂回によるWAF/IP制限バイパス | Cloudflare Tunnelを唯一の公開HTTP経路とし、Flyのpublic IP/serviceを削除。exact Hostも検証（D14/ADR 013） |
@@ -318,6 +320,6 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. 本計画書レビュー・合意
-2. 残る未決論点 **D5（OG画像生成）** を決定（D8はADR 017、D9・D12・D15・D16はADR 006・014・015・016で確定済み）
-3. リポジトリ初期化 → フェーズ1着手
+1. Python 3.14 + uvでリポジトリを初期化
+2. フェーズ1（FastAPIスケルトン、SQLite、Middleware、`/healthz`）へ着手
+3. フェーズ3でADR 018に従ってOG画像生成を実装

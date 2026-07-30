@@ -13,7 +13,7 @@
 - 管理画面の更新transactionが成功した後、関連する少数のURLまたは集合タグをCloudflare APIへ同期送信する。
 - パージ要求には短いtimeoutを設定する。成功すれば更新完了として表示し、失敗した場合は更新自体を取り消さず、管理者へ「キャッシュ反映はTTL待ち」と表示してログへ残す。
 - 通常処理では自動retry、SQLite outbox、lease、非同期flusher、常駐worker、専用queueを作らない。
-- 個別名言・著者等の詳細ページと既知のOG画像はURLパージを基本とする。
+- 個別名言・著者等の詳細ページと、ADR 018で定めた `/quotes/{slugOrQid}/og.png` / `/authors/{slug}/og.png` はURLパージを基本とする。OG画像はパージ後の次回アクセスで再生成される。
 - 追加・削除・並び順変更では、対象となる一覧の集合タグ、または列挙しやすい一覧URLをパージする。
 - `sitemap.xml`はURLパージする。
 - ランキングは再計算成功後に`/ranking`とトップページをパージする。
@@ -64,3 +64,4 @@
 ## 参考
 
 - [Cloudflare Purge cache](https://developers.cloudflare.com/cache/how-to/purge-cache/)
+- [ADR 018: OG画像生成方式](018-og-image-generation.md)

@@ -21,7 +21,8 @@ env/
 *.db-shm
 *.sqlite
 *.sqlite3
-/data/
+/data/*
+!/data/.gitkeep
 
 # テスト・カバレッジ
 .pytest_cache/

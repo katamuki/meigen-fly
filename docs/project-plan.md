@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-30（Python 3.14 + uvによる開発環境初期化を完了）
+> - 更新日: 2026-07-30（フェーズ1の基盤構築を完了）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -244,10 +244,10 @@ meigen-fly/
 - [x] デザイン要件定義（D8。[design-guide](design/design-guide.md)）
 
 ### フェーズ1: 基盤構築
-- [ ] FastAPIスケルトン + Jinja2 + 静的配信
-- [ ] SQLiteスキーマ定義（PG→SQLite変換）＋ マイグレーション基盤（D4）
-- [ ] キャッシュ/セキュリティ Middleware（決定記録001 §4, §11）
-- [ ] `/healthz`
+- [x] FastAPIスケルトン + Jinja2 + 静的配信（2026-07-30）
+- [x] SQLite接続 + Alembicマイグレーション基盤（D4、2026-07-30）
+- [x] キャッシュ/セキュリティ Middleware（決定記録001 §4, §11、2026-07-30）
+- [x] `/healthz` + 最低限の自動テスト（2026-07-30）
 
 ### フェーズ2: データ移行
 - [ ] Supabase→SQLite 移行スクリプト（検索用派生インデックスは初期不要・D1）
@@ -320,5 +320,5 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ1（FastAPIスケルトン、SQLite、Middleware、`/healthz`）へ着手
+1. フェーズ2（Supabase→SQLiteデータ移行）へ着手
 2. フェーズ3でADR 018に従ってOG画像生成を実装

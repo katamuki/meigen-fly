@@ -1,0 +1,93 @@
+import asyncio
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from starlette.responses import Response
+
+from app import main
+from app.db import create_db_engine
+from app.middleware import cache_control_for, response_headers_middleware
+
+client = TestClient(main.app, base_url="http://localhost:8000")
+
+
+def test_home_renders_template_with_cache_and_security_headers() -> None:
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "名言集.com" in response.text
+    assert response.headers["cache-control"] == "public, s-maxage=300, max-age=60"
+    assert "default-src 'self'" in response.headers["content-security-policy"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
+
+def test_static_file_is_served_with_immutable_cache() -> None:
+    response = client.get("/static/styles.6b0387e0.css")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+def test_healthz_is_ok_and_not_cached(tmp_path: Path, monkeypatch) -> None:
+    health_engine = create_db_engine(f"sqlite:///{tmp_path / 'app.db'}")
+    monkeypatch.setattr(main, "engine", health_engine)
+
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert response.headers["cache-control"] == "private, no-store"
+    health_engine.dispose()
+
+
+def test_healthz_returns_503_when_database_is_unavailable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    missing_parent = tmp_path / "missing" / "app.db"
+    unavailable_engine = create_db_engine(f"sqlite:///{missing_parent}")
+    monkeypatch.setattr(main, "engine", unavailable_engine)
+
+    response = client.get("/healthz")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
+    assert response.headers["cache-control"] == "private, no-store"
+    unavailable_engine.dispose()
+
+
+def test_sensitive_and_unknown_paths_are_not_cached() -> None:
+    for path in ("/search?q=test", "/admin/example", "/login", "/random", "/unknown"):
+        response = client.get(path)
+        assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_author_list_and_detail_use_distinct_cache_policies() -> None:
+    list_request = client.build_request("GET", "/authors")
+    detail_request = client.build_request("GET", "/authors/example")
+
+    assert (
+        cache_control_for(list_request, main.HTMLResponse())
+        == "public, s-maxage=3600, max-age=300"
+    )
+    assert (
+        cache_control_for(detail_request, main.HTMLResponse())
+        == "public, s-maxage=86400, max-age=3600"
+    )
+
+
+def test_mandatory_no_store_overrides_downstream_cache_header() -> None:
+    request = client.build_request("GET", "/healthz")
+
+    async def call_next(_request) -> Response:
+        return Response(headers={"Cache-Control": "public, max-age=3600"})
+
+    response = asyncio.run(response_headers_middleware(request, call_next))
+
+    assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_unknown_host_is_rejected() -> None:
+    response = client.get("/", headers={"Host": "attacker.invalid"})
+
+    assert response.status_code == 400

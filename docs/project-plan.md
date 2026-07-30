@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-07-19（D5のOG画像生成方式を確定）
+> - 更新日: 2026-07-30（Python 3.14 + uvによる開発環境初期化を完了）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -240,7 +240,7 @@ meigen-fly/
 - [x] D9・D12・D15・D16の決定とADR化（2026-07-14、ADR 006・014・015・016）
 - [x] D8（デザイン刷新）の決定とADR化（2026-07-17、ADR 017。提案B採用・デザインガイド正本化）
 - [x] D5（OG画像生成）の決定とADR化（2026-07-19、ADR 018。Pillowオンデマンド生成）
-- [ ] Python 3.14 + uvによる開発環境初期化（`pyproject.toml`・`uv.lock`）
+- [x] Python 3.14 + uvによる開発環境初期化（`pyproject.toml`・`uv.lock`、2026-07-30）
 - [x] デザイン要件定義（D8。[design-guide](design/design-guide.md)）
 
 ### フェーズ1: 基盤構築
@@ -320,6 +320,5 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. Python 3.14 + uvでリポジトリを初期化
-2. フェーズ1（FastAPIスケルトン、SQLite、Middleware、`/healthz`）へ着手
-3. フェーズ3でADR 018に従ってOG画像生成を実装
+1. フェーズ1（FastAPIスケルトン、SQLite、Middleware、`/healthz`）へ着手
+2. フェーズ3でADR 018に従ってOG画像生成を実装

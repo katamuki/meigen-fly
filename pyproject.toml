@@ -1,0 +1,20 @@
+[project]
+name = "meigen-fly"
+version = "0.1.0"
+description = "Japanese quote website built with FastAPI and SQLite"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "alembic",
+    "fastapi",
+    "jinja2",
+    "pillow",
+    "sqlalchemy",
+    "uvicorn",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]

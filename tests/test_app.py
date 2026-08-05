@@ -87,7 +87,23 @@ def test_mandatory_no_store_overrides_downstream_cache_header() -> None:
     assert response.headers["cache-control"] == "private, no-store"
 
 
-def test_unknown_host_is_rejected() -> None:
-    response = client.get("/", headers={"Host": "attacker.invalid"})
+def test_host_authority_must_match_public_origin_exactly() -> None:
+    assert client.get("/", headers={"Host": "LOCALHOST:8000"}).status_code == 200
 
-    assert response.status_code == 400
+    for host in (
+        "localhost",
+        "localhost:9999",
+        "localhost:not-a-port",
+        "attacker.invalid",
+    ):
+        response = client.get("/", headers={"Host": host})
+        assert response.status_code == 400
+
+
+def test_og_images_use_thirty_day_edge_cache() -> None:
+    for path in ("/quotes/q1/og.png", "/authors/example/og.png"):
+        request = client.build_request("GET", path)
+        assert (
+            cache_control_for(request, main.HTMLResponse())
+            == "public, s-maxage=2592000, max-age=86400"
+        )

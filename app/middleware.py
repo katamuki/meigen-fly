@@ -1,12 +1,17 @@
 from collections.abc import Awaitable, Callable
 
+from starlette.datastructures import Headers
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import PlainTextResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from app.config import normalize_authority
 
 NO_STORE = "private, no-store"
 ROOT_CACHE = "public, s-maxage=300, max-age=60"
 AUTHOR_LIST_CACHE = "public, s-maxage=3600, max-age=300"
 AUTHOR_DETAIL_CACHE = "public, s-maxage=86400, max-age=3600"
+OG_IMAGE_CACHE = "public, s-maxage=2592000, max-age=86400"
 
 CACHE_RULES = (
     ("/static/", "public, max-age=31536000, immutable"),
@@ -31,6 +36,32 @@ CONTENT_SECURITY_POLICY = (
 )
 
 
+class ExactHostMiddleware:
+    """Reject requests whose Host authority differs from PUBLIC_ORIGIN."""
+
+    def __init__(self, app: ASGIApp, allowed_authority: str) -> None:
+        self.app = app
+        self.allowed_authority = normalize_authority(allowed_authority)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        host_values = Headers(scope=scope).getlist("host")
+        try:
+            request_authority = normalize_authority(host_values[0])
+        except IndexError, ValueError:
+            request_authority = None
+
+        if len(host_values) != 1 or request_authority != self.allowed_authority:
+            response = PlainTextResponse("Invalid host header", status_code=400)
+            await response(scope, receive, send)
+            return
+
+        await self.app(scope, receive, send)
+
+
 def cache_control_for(request: Request, response: Response) -> str:
     """Select the cache policy defined by ADR 001."""
     path = request.url.path
@@ -40,6 +71,12 @@ def cache_control_for(request: Request, response: Response) -> str:
         return NO_STORE
     if path == "/":
         return ROOT_CACHE
+    if (
+        path.startswith(("/quotes/", "/authors/"))
+        and path.endswith("/og.png")
+        and path.count("/") == 3
+    ):
+        return OG_IMAGE_CACHE
     if path == "/authors":
         return AUTHOR_LIST_CACHE
     if path.startswith("/authors/"):

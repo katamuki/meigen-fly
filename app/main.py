@@ -6,11 +6,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.config import get_public_host
+from app.config import get_public_authority
 from app.db import engine
-from app.middleware import response_headers_middleware
+from app.middleware import ExactHostMiddleware, response_headers_middleware
 
 APP_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=APP_DIR / "templates")
@@ -18,9 +17,8 @@ templates = Jinja2Templates(directory=APP_DIR / "templates")
 app = FastAPI(title="meigen-fly")
 app.middleware("http")(response_headers_middleware)
 app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=[get_public_host()],
-    www_redirect=False,
+    ExactHostMiddleware,
+    allowed_authority=get_public_authority(),
 )
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 

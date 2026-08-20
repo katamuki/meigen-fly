@@ -62,6 +62,13 @@ def test_sensitive_and_unknown_paths_are_not_cached() -> None:
         assert response.headers["cache-control"] == "private, no-store"
 
 
+def test_api_documentation_is_not_exposed() -> None:
+    for path in ("/docs", "/redoc", "/openapi.json"):
+        response = client.get(path)
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "private, no-store"
+
+
 def test_author_list_and_detail_use_distinct_cache_policies() -> None:
     list_request = client.build_request("GET", "/authors")
     detail_request = client.build_request("GET", "/authors/example")

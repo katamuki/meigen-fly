@@ -14,7 +14,12 @@ from app.middleware import ExactHostMiddleware, response_headers_middleware
 APP_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
-app = FastAPI(title="meigen-fly")
+app = FastAPI(
+    title="meigen-fly",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 app.middleware("http")(response_headers_middleware)
 app.add_middleware(
     ExactHostMiddleware,

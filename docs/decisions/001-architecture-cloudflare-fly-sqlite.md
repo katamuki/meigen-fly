@@ -133,6 +133,10 @@ async def cache_headers(request, call_next):
 
 登録は公開HTMLと分離した `POST /api/likes/{quote_id}` で受け、`private, no-store` とCloudflare Bypassを必須にする。成功応答で最新件数を返し、押した本人のDOMだけ即時更新する。TTL内の再読込で一時的に古い件数へ戻ることは許容する。重複抑止は`client_uuid`の一意制約と単純な短時間IP制限に留め、IP hashは保存しない（[`006-like-count-cache-strategy.md`](006-like-count-cache-strategy.md)）。
 
+### 4.7 APIドキュメント
+
+FastAPI標準の`/docs`、`/redoc`、`/openapi.json`は公開ルートの対象外とし、無効化する。標準のSwagger UIとReDocは外部CDNやインラインscriptを使い、本サイトの共通CSPと両立しない。現時点でAPIドキュメントの公開要件はないため、専用のCSP、環境別切り替え、アセットのローカル配信は追加しない。
+
 ## 5. キャッシュパージ
 
 管理更新後に少数の関連URLまたは集合タグを同期パージする。失敗時は管理者へ表示してログへ残し、TTLによる自然失効を待つ。outbox、自動retry、非同期flusherは作らない。大量更新時は集合タグ、手動Purge Everything、またはTTLへ委任する。詳細は [`014-cache-purge-boundaries.md`](014-cache-purge-boundaries.md) を正本とする。

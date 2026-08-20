@@ -83,7 +83,7 @@ scripts/rebuild_sqlite.sh [SOURCE_DIR] [DB_PATH]
 期待値はすべて同じダンプから算出する（件数のハードコードなし。例外は高水位の下限3,197）。
 
 - `PRAGMA integrity_check` = ok、`PRAGMA foreign_key_check` = 0件
-- 13表について、件数一致・主キー集合一致に加えて、**主キーごとに全列を移行元と比較**する
+- 13表について、件数一致・主キー集合一致に加えて、**主キーごとに全列を移行元と比較**する。比較対象の列集合がSQLite側の列集合と一致することも確認し、ダンプから列が落ちてserver defaultで埋まった場合を検出する（loader側も投入前に全列が明示されていることを確認する）
   - 無変換列（FK列・`countries.code`・歴史日付のera/precision・本文等）は値の完全一致（文字列は同一コードポイント=同一バイト列）
   - 変換列は検証スクリプト側で独立に期待値を作る: 真偽値→0/1、歴史日付は` BC`接尾辞を外した値、`quotes.legacy_vote_count`は`legacy_votes`のquote別合算、`categories.updated_at`は移行元`created_at`
   - 全時点列は27文字形式であることと、`parse_instant`した値が移行元timestamptzと等しいこと（loaderの`format_instant`は使わない）
@@ -99,6 +99,6 @@ scripts/rebuild_sqlite.sh [SOURCE_DIR] [DB_PATH]
 
 | 日付 | 内容 | 結果 |
 |---|---|---|
-| 2026-08-20 | 本番から取得（06:43 UTC）→ `rebuild_sqlite.sh`（レビュー反映後の行単位比較でも再実行） | 全検証PASS（73項目）。authors 774・quotes 1,831・quote_likes 7,942（2026-07-17の7,591から増加）・legacy票合計24,044・高水位3,197。DBファイル約3MB |
+| 2026-08-20 | 本番から取得（06:43 UTC）→ `rebuild_sqlite.sh`（レビュー反映後の行単位比較でも再実行） | 全検証PASS（86項目）。authors 774・quotes 1,831・quote_likes 7,942（2026-07-17の7,591から増加）・legacy票合計24,044・高水位3,197。DBファイル約3MB |
 
 フェーズ6の最終移行では、旧環境の書き込み凍結後に同じ2コマンドを実行し、本記録へ追記する。

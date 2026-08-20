@@ -149,8 +149,17 @@ def set_quotes_sequence(connection: Connection, source_dir: Path) -> int:
 def insert_rows(connection: Connection, table_name: str, rows: list[dict]) -> None:
     """Bulk insert; when the database rejects it, name the first bad row."""
     table = metadata.tables[table_name]
-    if any(row.keys() != rows[0].keys() for row in rows):
-        raise LoadError(f"{table_name}: rows do not share the same columns")
+    expected_columns = set(table.c.keys())
+    for row in rows:
+        # Every column must be supplied explicitly, otherwise a column missing
+        # from the dump would silently take the server default.
+        if set(row) != expected_columns:
+            missing = sorted(expected_columns - set(row))
+            extra = sorted(set(row) - expected_columns)
+            raise LoadError(
+                f"{table_name}: row columns do not match the table"
+                f" (missing {missing}, unexpected {extra})"
+            )
     try:
         connection.execute(insert(table), rows)
     except IntegrityError as error:

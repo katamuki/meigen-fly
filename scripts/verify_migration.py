@@ -115,7 +115,22 @@ def compare_table(
     connection, report: Report, table: str, src_rows: list[dict], legacy: Counter
 ):
     pk = TABLES[table]
-    db_rows = fetch(connection, f"SELECT * FROM {table}")
+    result = connection.execute(text(f"SELECT * FROM {table}"))
+    db_columns = set(result.keys())
+    db_rows = [dict(row) for row in result.mappings()]
+    if src_rows:
+        # Every SQLite column must be covered by a source-derived expectation,
+        # otherwise a dropped dump column would pass on server defaults.
+        sample = src_rows[0]
+        expected_columns = set(expected_values(table, sample, legacy)) | set(
+            expected_instants(table, sample)
+        )
+        report.check(
+            f"{table}: column set equals schema",
+            expected_columns == db_columns,
+            f"missing {sorted(db_columns - expected_columns)},"
+            f" unexpected {sorted(expected_columns - db_columns)}",
+        )
     report.check(
         f"{table}: row count",
         len(db_rows) == len(src_rows),

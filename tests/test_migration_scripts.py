@@ -260,3 +260,33 @@ def test_load_names_the_row_rejected_by_a_constraint(
             )
     finally:
         engine.dispose()
+
+
+def test_missing_dump_column_is_rejected_by_loader_and_verifier(
+    tmp_path: Path, migrated_db: Path, monkeypatch
+) -> None:
+    (tmp_path / "dump").mkdir()
+    source_dir = write_dump(tmp_path / "dump", DUMP)
+    engine = load_source_data.create_db_engine(f"sqlite:///{migrated_db}")
+    try:
+        load_source_data.load(source_dir, engine)
+
+        # A dump without `weight` must not pass on the server default of 5.
+        dump = json.loads(json.dumps(DUMP))
+        for row in dump["quotes"]:
+            del row["weight"]
+        short_dir = write_dump(tmp_path / "dump", dump)
+        report = verify_migration.verify(short_dir, engine)
+        assert "quotes: column set equals schema" in report.failures
+
+    finally:
+        engine.dispose()
+
+    fresh_db = tmp_path / "fresh.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{fresh_db}")
+    fresh_engine = upgrade_to_head(fresh_db)
+    try:
+        with pytest.raises(load_source_data.LoadError, match=r"missing \['weight'\]"):
+            load_source_data.load(short_dir, fresh_engine)
+    finally:
+        fresh_engine.dispose()

@@ -4,6 +4,8 @@
 
 **確定: SQLAlchemy Core + Alembicを採用**（2026-07-13決定）
 
+> 追記（2026-08-20）: 命名規約・revision 0002の手書き部分・移行手順は`docs/database/migration-runbook.md`に記録した。
+>
 > 追記（2026-07-17）: 移行対象は本番確認と移行判断により**16表**（原本・関連13表 + ranking snapshot 3表。`legacy_votes`は`quotes.legacy_vote_count`へ統合）へ確定した。下記コンテキストの「19テーブル」は決定時点の想定。詳細は`docs/database/migration-decisions.md`を参照。決定内容は変わらない。
 
 ## コンテキスト

@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-08-05（フェーズ1レビュー・フェーズ2タスク詳細化を反映）
+> - 更新日: 2026-08-20（フェーズ2完了を反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -251,30 +251,32 @@ meigen-fly/
 
 ### フェーズ2: データ移行
 
-設計の正は`docs/database/migration-decisions.md`の「判断」列と`inventory-4-new-db-design.md`（第4部）。検索用派生インデックスは初期不要（D1）。
+設計の正は`docs/database/migration-decisions.md`の「判断」列と`inventory-4-new-db-design.md`（第4部）。実装した命名規約・手順・変換ルールは[`docs/database/migration-runbook.md`](database/migration-runbook.md)。検索用派生インデックスは初期不要（D1）。
+
+**2026-08-20完了**（本番ダンプで再構築・全検証PASS。フェーズ6の最終移行は同runbookの手順を再実行する）。
 
 **スコープ境界**: ranking snapshot 3表はスキーマのみ作成し、データは投入しない（再計算CLIとranking係数のCLI設定移行はフェーズ4）。フェーズ2のデータ移行・検証対象は原本・関連13表 + `quotes.legacy_vote_count`統合。
 
 #### 2-1. スキーマ作成
-- [ ] 制約・索引の命名規約を設定（D4/ADR 004）
-- [ ] 16表DDLのAlembic revision作成（第4部を正とする。手書き部分: category階層・level 2割当のSQLite互換trigger、生誕国最大1件の部分UNIQUE索引、各CHECK制約）
-- [ ] 空DBへの`alembic upgrade head`を自動テストに追加（ADR 004の検証要件）
+- [x] 制約・索引の命名規約を設定（D4/ADR 004、2026-08-20。[migration-runbook §1](database/migration-runbook.md)）
+- [x] 16表DDLのAlembic revision作成（第4部を正とする。手書き部分: category階層・level 2割当のSQLite互換trigger、生誕国最大1件の部分UNIQUE索引、各CHECK制約）（2026-08-20、revision 0002 + `app/schema.py`）
+- [x] 空DBへの`alembic upgrade head`を自動テストに追加（ADR 004の検証要件）（2026-08-20、`tests/test_migrations.py`）
 
 #### 2-2. 移行元データ取得
-- [ ] エクスポート方法（`pg_dump`データダンプ or CSV）と変換スクリプトの読み込み方式を決定。ダンプは`meigen-fly-private/source-db/data/`（Git管理外）へ保存
-- [ ] 「取得→変換→投入→検証」を毎回まっさらなSQLiteファイルを作る再実行可能な一連のコマンドとして整備（フェーズ6の最終移行で同じ手順を再実行する）
+- [x] エクスポート方法と変換スクリプトの読み込み方式を決定（2026-08-20。`psql`単一トランザクションの`row_to_json`によるJSON Lines。理由は[migration-runbook §3](database/migration-runbook.md)）。ダンプは`meigen-fly-private/source-db/data/`（Git管理外）へ保存
+- [x] 「取得→変換→投入→検証」を毎回まっさらなSQLiteファイルを作る再実行可能な一連のコマンドとして整備（フェーズ6の最終移行で同じ手順を再実行する）（2026-08-20、`scripts/export_source_db.sh` + `scripts/rebuild_sqlite.sh`）
 
 #### 2-3. 変換・投入スクリプト（`scripts/`新設）
-- [ ] 13表 + `legacy_vote_count`統合の変換・投入（判断シート19件の判断列に従う）
-- [ ] 変換ルールをスクリプト仕様として明文化:
+- [x] 13表 + `legacy_vote_count`統合の変換・投入（判断シート19件の判断列に従う）（2026-08-20、`scripts/load_source_data.py`）
+- [x] 変換ルールをスクリプト仕様として明文化（[migration-runbook §4](database/migration-runbook.md)）:
   - 全時点列: TIMESTAMPTZ → 27文字固定長UTC `TEXT`（マイクロ秒6桁パディング、D17/ADR 011）
   - `categories.updated_at`: 新設、初期値は現行`created_at`流用（判断#15）
   - `quote_likes`: `quote_id`/`client_uuid`/`created_at`/`is_valid`のみ移行。row UUID・UA・IP/IP hashは除外（判断#4・#5）
   - `countries.code`: 無変換移行を既定とする（意味上の重複1行があるためUNIQUE化しない。正規化する場合のみ該当コードの対応を記録。判断#13）
-- [ ] quotes高水位: 投入後の`sqlite_sequence`を`max(id)`と旧sequence値3,197の大きい方に設定（判断#14）
+- [x] quotes高水位: 投入後の`sqlite_sequence`を`max(id)`と旧sequence値3,197の大きい方に設定（判断#14）（2026-08-20。旧sequence値はダンプから動的に読み、3,197を下限とする）
 
 #### 2-4. 整合性検証
-- [ ] 検証スクリプト作成。期待値は同一ダンプから動的算出する（本番は更新が続くため、2026-07-17時点の件数をハードコードしない）
+- [x] 検証スクリプト作成。期待値は同一ダンプから動的算出する（本番は更新が続くため、2026-07-17時点の件数をハードコードしない）（2026-08-20、`scripts/verify_migration.py`。本番ダンプで全件PASS、[migration-runbook §7](database/migration-runbook.md)）
   - 表ごとの件数一致、`PRAGMA integrity_check` / `PRAGMA foreign_key_check`、孤立関連ゼロ
   - 全時点列の27文字固定長UTC形式とround-trip一致（ADR 011）
   - `quotes.legacy_vote_count`合計 = 旧`legacy_votes`合計票数
@@ -347,5 +349,5 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ2（Supabase→SQLiteデータ移行）へ着手
+1. フェーズ3（公開ページ実装）へ着手。`data/app.db`は`scripts/rebuild_sqlite.sh`で本番相当データから再構築できる
 2. フェーズ3でADR 018に従ってOG画像生成を実装

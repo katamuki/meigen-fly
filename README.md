@@ -15,3 +15,14 @@
 - セキュリティの基本事項は守りつつ、扱うデータや想定リスクに対して過剰な仕組みは導入しない
 
 大規模運用、高可用性、厳格な監査対応、複雑な権限管理などは、実際に必要になった時点で検討します。
+
+## データベースの構築
+
+SQLiteのスキーマはAlembicで管理し（`migrations/`）、アプリ用の表定義は`app/schema.py`にあります。
+
+```bash
+uv run alembic upgrade head   # 空のdata/app.dbにスキーマを作る
+uv run pytest                 # テスト
+```
+
+旧環境（Supabase）からのデータ移行は`scripts/`のエクスポート・投入・検証スクリプトで行います。手順と変換ルールは[docs/database/migration-runbook.md](docs/database/migration-runbook.md)を参照してください。

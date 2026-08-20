@@ -2,6 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 
+from app import schema  # noqa: F401  (registers the tables on metadata)
 from app.config import get_database_url
 from app.db import create_db_engine, metadata
 

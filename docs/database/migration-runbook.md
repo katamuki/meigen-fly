@@ -83,21 +83,22 @@ scripts/rebuild_sqlite.sh [SOURCE_DIR] [DB_PATH]
 期待値はすべて同じダンプから算出する（件数のハードコードなし。例外は高水位の下限3,197）。
 
 - `PRAGMA integrity_check` = ok、`PRAGMA foreign_key_check` = 0件
-- 13表の件数一致と主キー集合の一致、snapshot 3表が空
-- 関連・FK列15本で孤立0
-- 全時点列が27文字形式で、`parse_instant`した値が移行元timestamptzと等しい（round-trip）
-- `categories.updated_at = created_at`
-- `quotes.legacy_vote_count`の合計・quote別値が`legacy_votes`と一致
+- 13表について、件数一致・主キー集合一致に加えて、**主キーごとに全列を移行元と比較**する
+  - 無変換列（FK列・`countries.code`・歴史日付のera/precision・本文等）は値の完全一致（文字列は同一コードポイント=同一バイト列）
+  - 変換列は検証スクリプト側で独立に期待値を作る: 真偽値→0/1、歴史日付は` BC`接尾辞を外した値、`quotes.legacy_vote_count`は`legacy_votes`のquote別合算、`categories.updated_at`は移行元`created_at`
+  - 全時点列は27文字形式であることと、`parse_instant`した値が移行元timestamptzと等しいこと（loaderの`format_instant`は使わない）
+- snapshot 3表が空、関連・FK列15本で孤立0（行比較とは別に残す）
+- `quotes.legacy_vote_count`合計 = `legacy_votes`合計
 - `sqlite_sequence.quotes ≥ max(max(id), 旧sequence, 3197)`
-- `quotes.text/text_en/context_note`, `authors.name/description`, `sources.title`, `categories.name`のバイト一致
-- `quotes.enable`・`slug`・`quote_likes.is_valid`の分布一致
 
-`tests/test_migration_scripts.py`が小さな合成ダンプで投入→検証、非空DBの拒否、不整合データでの中断、改ざん検知を確認する。
+投入時にDB制約（NOT NULL/CHECK/FK/UNIQUE）で拒否された場合、`load_source_data.py`は行単位に再試行して最初に拒否された行の表名・主キー・制約名を`load aborted: quotes: row {'id': 3000} rejected: CHECK constraint failed: ck_quotes_weight`の形で報告し、全体をrollbackする。
+
+`tests/test_migration_scripts.py`が小さな合成ダンプで投入→検証、非空DBの拒否、不整合データでの中断と拒否行の報告、改ざん（本文・FK列の差し替え・フラグの行間入れ替え・日付）の検知を確認する。
 
 ## 7. 実施記録
 
 | 日付 | 内容 | 結果 |
 |---|---|---|
-| 2026-08-20 | 本番から取得（06:43 UTC）→ `rebuild_sqlite.sh` | 全検証PASS。authors 774・quotes 1,831・quote_likes 7,942（2026-07-17の7,591から増加）・legacy票合計24,044・高水位3,197。DBファイル約3MB |
+| 2026-08-20 | 本番から取得（06:43 UTC）→ `rebuild_sqlite.sh`（レビュー反映後の行単位比較でも再実行） | 全検証PASS（73項目）。authors 774・quotes 1,831・quote_likes 7,942（2026-07-17の7,591から増加）・legacy票合計24,044・高水位3,197。DBファイル約3MB |
 
 フェーズ6の最終移行では、旧環境の書き込み凍結後に同じ2コマンドを実行し、本記録へ追記する。

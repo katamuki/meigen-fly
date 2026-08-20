@@ -199,10 +199,64 @@ def test_verify_detects_a_tampered_row(tmp_path: Path, migrated_db: Path) -> Non
                 )
             )
         report = verify_migration.verify(source_dir, engine)
-        assert "quotes.text: bytes identical" in report.failures
+        assert "quotes: column values equal source" in report.failures
         assert (
             "quotes.legacy_vote_count: total equals legacy_votes total"
             in report.failures
         )
+    finally:
+        engine.dispose()
+
+
+def test_verify_detects_swapped_foreign_key_and_flag(
+    tmp_path: Path, migrated_db: Path
+) -> None:
+    (tmp_path / "dump").mkdir()
+    source_dir = write_dump(tmp_path / "dump", DUMP)
+    engine = load_source_data.create_db_engine(f"sqlite:///{migrated_db}")
+    try:
+        load_source_data.load(source_dir, engine)
+        with engine.begin() as connection:
+            # Still a valid author, still no orphan, still the same distribution.
+            connection.execute(text("UPDATE sources SET author_id = 2232 WHERE id = 7"))
+            connection.execute(
+                text(
+                    "UPDATE author_country SET is_birth_country = 1 - is_birth_country"
+                )
+            )
+            connection.execute(
+                text("UPDATE authors SET birth_date = '0066-12-08' WHERE id = 1479")
+            )
+        report = verify_migration.verify(source_dir, engine)
+        assert "sources: column values equal source" in report.failures
+        assert "author_country: column values equal source" in report.failures
+        assert "authors: column values equal source" in report.failures
+        assert "sources.author_id: no orphans" not in report.failures
+    finally:
+        engine.dispose()
+
+
+def test_load_names_the_row_rejected_by_a_constraint(
+    tmp_path: Path, migrated_db: Path
+) -> None:
+    (tmp_path / "dump").mkdir()
+    dump = json.loads(json.dumps(DUMP))
+    dump["quotes"][1]["weight"] = 11  # violates ck_quotes_weight
+    source_dir = write_dump(tmp_path / "dump", dump)
+    engine = load_source_data.create_db_engine(f"sqlite:///{migrated_db}")
+    try:
+        with pytest.raises(load_source_data.LoadError) as info:
+            load_source_data.load(source_dir, engine)
+        assert "quotes: row {'id': 3000} rejected" in str(info.value)
+        assert "ck_quotes_weight" in str(info.value)
+        with engine.connect() as connection:  # whole load rolled back
+            assert (
+                connection.execute(text("SELECT count(*) FROM quotes")).scalar_one()
+                == 0
+            )
+            assert (
+                connection.execute(text("SELECT count(*) FROM authors")).scalar_one()
+                == 0
+            )
     finally:
         engine.dispose()

@@ -28,8 +28,9 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, insert, text
+from sqlalchemy import Engine, insert, literal, select, text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import IntegrityError
 
 from app import schema  # noqa: F401  (registers tables on metadata)
 from app.db import create_db_engine, metadata
@@ -145,6 +146,47 @@ def set_quotes_sequence(connection: Connection, source_dir: Path) -> int:
     return target
 
 
+def insert_rows(connection: Connection, table_name: str, rows: list[dict]) -> None:
+    """Bulk insert; when the database rejects it, name the first bad row."""
+    table = metadata.tables[table_name]
+    if any(row.keys() != rows[0].keys() for row in rows):
+        raise LoadError(f"{table_name}: rows do not share the same columns")
+    try:
+        connection.execute(insert(table), rows)
+    except IntegrityError as error:
+        raise LoadError(
+            describe_rejected_row(connection, table_name, rows, error)
+        ) from error
+
+
+def describe_rejected_row(
+    connection: Connection, table_name: str, rows: list[dict], error: IntegrityError
+) -> str:
+    """Retry row by row to find the first row the constraints reject.
+
+    The caller rolls the whole transaction back afterwards, so the extra
+    inserts made here never persist. Rows the bulk insert already stored are
+    skipped. (SAVEPOINTs are avoided on purpose: pysqlite's legacy transaction
+    handling can commit them implicitly.)
+    """
+    table = metadata.tables[table_name]
+    pk = TABLES[table_name]
+    for row in rows:
+        key = {column: row[column] for column in pk}
+        already_stored = connection.execute(
+            select(literal(1)).where(
+                *[table.c[column] == value for column, value in key.items()]
+            )
+        ).first()
+        if already_stored:
+            continue
+        try:
+            connection.execute(insert(table), [row])
+        except IntegrityError as row_error:
+            return f"{table_name}: row {key} rejected: {row_error.orig}"
+    return f"{table_name}: bulk insert rejected: {error.orig}"
+
+
 def load(source_dir: Path, engine: Engine) -> dict[str, int]:
     """Load every table inside one transaction; return row counts per table."""
     counts: dict[str, int] = {}
@@ -162,7 +204,7 @@ def load(source_dir: Path, engine: Engine) -> dict[str, int]:
                 for row in rows:
                     row["legacy_vote_count"] = votes.get(row["id"], 0)
             if rows:
-                connection.execute(insert(metadata.tables[table_name]), rows)
+                insert_rows(connection, table_name, rows)
             counts[table_name] = len(rows)
         counts["quotes_sequence"] = set_quotes_sequence(connection, source_dir)
     return counts

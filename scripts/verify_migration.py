@@ -118,19 +118,6 @@ def compare_table(
     result = connection.execute(text(f"SELECT * FROM {table}"))
     db_columns = set(result.keys())
     db_rows = [dict(row) for row in result.mappings()]
-    if src_rows:
-        # Every SQLite column must be covered by a source-derived expectation,
-        # otherwise a dropped dump column would pass on server defaults.
-        sample = src_rows[0]
-        expected_columns = set(expected_values(table, sample, legacy)) | set(
-            expected_instants(table, sample)
-        )
-        report.check(
-            f"{table}: column set equals schema",
-            expected_columns == db_columns,
-            f"missing {sorted(db_columns - expected_columns)},"
-            f" unexpected {sorted(expected_columns - db_columns)}",
-        )
     report.check(
         f"{table}: row count",
         len(db_rows) == len(src_rows),
@@ -144,16 +131,28 @@ def compare_table(
 
     value_mismatches: Counter = Counter()
     instant_mismatches: Counter = Counter()
+    column_set_mismatches = 0
     for key, src in src_by_key.items():
         db = db_by_key.get(key)
         if db is None:
             continue  # already reported above
-        for column, value in expected_values(table, src, legacy).items():
+        expected = expected_values(table, src, legacy)
+        instants = expected_instants(table, src)
+        # Each row's expectations must cover every SQLite column, otherwise a
+        # column dropped from any dump row would pass on the server default.
+        if set(expected) | set(instants) != db_columns:
+            column_set_mismatches += 1
+        for column, value in expected.items():
             if db.get(column) != value:
                 value_mismatches[column] += 1
-        for column, value in expected_instants(table, src).items():
+        for column, value in instants.items():
             if not instant_matches(db.get(column), value):
                 instant_mismatches[column] += 1
+    report.check(
+        f"{table}: every row covers all schema columns",
+        column_set_mismatches == 0,
+        f"{column_set_mismatches} rows",
+    )
     report.check(
         f"{table}: column values equal source",
         not value_mismatches,

@@ -271,13 +271,20 @@ def test_missing_dump_column_is_rejected_by_loader_and_verifier(
     try:
         load_source_data.load(source_dir, engine)
 
-        # A dump without `weight` must not pass on the server default of 5.
+        # A dump without `weight` must not pass on the server default of 5,
+        # even when only one row lacks the column.
         dump = json.loads(json.dumps(DUMP))
         for row in dump["quotes"]:
             del row["weight"]
         short_dir = write_dump(tmp_path / "dump", dump)
         report = verify_migration.verify(short_dir, engine)
-        assert "quotes: column set equals schema" in report.failures
+        assert "quotes: every row covers all schema columns" in report.failures
+
+        partial = json.loads(json.dumps(DUMP))
+        del partial["quotes"][1]["weight"]  # quote id 3000 only
+        partial_dir = write_dump(tmp_path / "dump", partial)
+        report = verify_migration.verify(partial_dir, engine)
+        assert "quotes: every row covers all schema columns" in report.failures
 
     finally:
         engine.dispose()

@@ -4,6 +4,8 @@
 
 **全19件判断済み（確定日: 2026-07-17）。**
 
+> 追記（2026-08-25）: 本シートを正としたフェーズ2（スキーマ作成・データ移行・整合性検証）は完了した。実装の記録は[`migration-runbook.md`](migration-runbook.md)、進捗は`docs/project-plan.md` §8を参照。
+
 論点・既定案・分岐の詳細は[第4部§12](inventory-4-new-db-design.md)、確認項目A1〜A9・O1〜O4の内容は[第5部](inventory-5-production-checklist.md)を参照。
 
 ## 確認の実施状況

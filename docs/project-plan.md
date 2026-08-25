@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-08-20（フェーズ2完了を反映）
+> - 更新日: 2026-08-25（フェーズ2完了・レビュー対応を反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -253,7 +253,7 @@ meigen-fly/
 
 設計の正は`docs/database/migration-decisions.md`の「判断」列と`inventory-4-new-db-design.md`（第4部）。実装した命名規約・手順・変換ルールは[`docs/database/migration-runbook.md`](database/migration-runbook.md)。検索用派生インデックスは初期不要（D1）。
 
-**2026-08-20完了**（本番ダンプで再構築・全検証PASS。フェーズ6の最終移行は同runbookの手順を再実行する）。
+**フェーズ2完了（2026-08-25）**: 実装2026-08-20、レビュー指摘4件の対応完了2026-08-25。本番ダンプで再構築・全検証PASS（86項目）。フェーズ6の最終移行は同runbookの手順を再実行する。
 
 **スコープ境界**: ranking snapshot 3表はスキーマのみ作成し、データは投入しない（再計算CLIとranking係数のCLI設定移行はフェーズ4）。フェーズ2のデータ移行・検証対象は原本・関連13表 + `quotes.legacy_vote_count`統合。
 

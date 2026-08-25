@@ -1,6 +1,59 @@
 {% extends "base.html" %}
+{% set nav = "home" %}
+{% block title %}名言集.com — 心に響く名言・格言のポータル{% endblock %}
 
 {% block content %}
-  <h1>名言集.com</h1>
-  <p>新しい名言集を準備しています。</p>
+  <section class="mg-hero-band">
+    <div class="mg-text">
+      <p class="mg-eyebrow">心に残る言葉を探す</p>
+      <h1 class="mg-hero__quote">名言との新しい出会いを。</h1>
+      <p class="mg-hero__meta mg-mt-4">注目名言はランキング連動の準備中です。</p>
+      <a class="mg-chip mg-chip--accent mg-mt-6" href="/quotes">名言一覧を見る →</a>
+    </div>
+  </section>
+
+  <div class="mg-wide mg-cols">
+    <section class="mg-col-main">
+      <div class="mg-section-head">
+        <h2 class="mg-h2">新着名言</h2>
+        <a class="mg-more" href="/quotes/latest">すべて見る →</a>
+      </div>
+      <div class="mg-stack mg-mt-4">
+        {% set show_created_date = true %}
+        {% for quote in latest %}
+          {% include "partials/quote_card.html" %}
+        {% else %}
+          <p class="mg-empty">表示できる名言がありません。</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <aside class="mg-col-side">
+      <h2 class="mg-h2">カテゴリから探す</h2>
+      <div class="mg-chips mg-mt-4 mg-mb-8">
+        {% for category in top_categories %}
+          <a class="mg-chip" href="/categories/{{ category.slug }}">{{ category.name }}</a>
+        {% endfor %}
+        <a class="mg-chip mg-chip--accent" href="/categories">すべて →</a>
+      </div>
+
+      <h2 class="mg-h2">名言をたどる</h2>
+      <div class="mg-stack mg-mt-4">
+        <a class="mg-author-card" href="/authors">
+          <span class="mg-avatar">人</span>
+          <span class="mg-author-card__body">
+            <span class="mg-author mg-block">著者から探す</span>
+            <span class="mg-author-card__meta mg-block">人物ごとの言葉を読む</span>
+          </span>
+        </a>
+        <a class="mg-author-card" href="/random">
+          <span class="mg-avatar">巡</span>
+          <span class="mg-author-card__body">
+            <span class="mg-author mg-block">ランダム名言</span>
+            <span class="mg-author-card__meta mg-block">偶然の一言に出会う</span>
+          </span>
+        </a>
+      </div>
+    </aside>
+  </div>
 {% endblock %}

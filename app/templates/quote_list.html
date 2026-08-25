@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% set nav = "quotes" %}
+{% block title %}{{ "新着名言" if latest else "名言一覧" }}{% if page > 1 %}（{{ page }}ページ）{% endif %}｜名言集.com{% endblock %}
+{% block meta_description %}{{ "最新の名言・格言を新着順で紹介します。" if latest else "心に響く名言・格言の一覧です。" }}{% endblock %}
+
+{% block content %}
+  <nav class="mg-breadcrumb" aria-label="パンくず">
+    <a href="/">ホーム</a><span class="sep">/</span>
+    <span class="current">{{ "新着名言" if latest else "名言一覧" }}</span>
+  </nav>
+
+  <div class="mg-wide mg-page-body">
+    <div class="mg-section-head mg-section-head--end mg-mb-6">
+      <div>
+        <h1 class="mg-h1">{{ "新着名言" if latest else "名言一覧" }}</h1>
+        <div class="mg-hero__meta mg-mt-3">全 {{ total|comma }}件{% if filters_active %}（絞り込み中）{% endif %}</div>
+      </div>
+      <div class="mg-chips" aria-label="並び順">
+        <a class="mg-chip{% if not latest %} mg-chip--sort-active{% endif %}" href="/quotes">人気順</a>
+        <a class="mg-chip{% if latest %} mg-chip--sort-active{% endif %}" href="/quotes/latest">新着順</a>
+      </div>
+    </div>
+
+    {% if quotes %}
+      <div class="mg-grid-2">
+        {% set show_created_date = latest %}
+        {% for quote in quotes %}
+          {% include "partials/quote_card.html" %}
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="mg-empty">条件に一致する名言がありません。</p>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+      <div class="mg-mt-12">
+        {% include "partials/pagination.html" %}
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}

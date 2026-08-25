@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-08-25（フェーズ2完了・レビュー対応を反映）
+> - 更新日: 2026-08-25（フェーズ3-A完了を反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -284,8 +284,10 @@ meigen-fly/
   - 本文サンプルのバイト一致（文字化け検査）、`enable`・`slug`・`is_valid`の分布一致
 
 ### フェーズ3: 公開ページ実装
-- [ ] 一覧/詳細（quotes, authors, categories, characters, sources, professions）
-- [ ] トップ・ランキング・ランダム
+- [x] 名言一覧/詳細（quotes。3-A、2026-08-25）
+- [ ] その他の一覧/詳細（authors, categories, characters, sources, professions）
+- [x] トップ（注目名言は3-Cまでプレースホルダー。3-A、2026-08-25）
+- [ ] ランキング・ランダム
 - [ ] 検索（HTMXインクリメンタル・D1）
 - [ ] いいね（D9）
 - [ ] SEO（sitemap/robots/構造化データ/canonical）

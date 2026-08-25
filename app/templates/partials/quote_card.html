@@ -1,0 +1,26 @@
+<article class="mg-quote-card mg-quote-card--list" data-quote-id="{{ quote.id }}">
+  <a class="mg-quote" href="{{ quote.path }}" lang="{{ quote.display_language }}">{{ quote.display_text }}</a>
+  {% if quote.alternate_text %}
+    <p class="mg-quote-alternate" lang="{{ quote.alternate_language }}">{{ quote.alternate_text }}</p>
+  {% endif %}
+  <div class="mg-quote-card__foot">
+    {% if quote.character %}
+      <a class="mg-author" href="/characters/{{ quote.character.slug }}">{{ quote.character.name }}</a>
+    {% elif quote.author %}
+      <a class="mg-author" href="/authors/{{ quote.author.slug }}">{{ quote.author.name }}</a>
+    {% else %}
+      <span class="mg-author">作者不明</span>
+    {% endif %}
+    {% include "partials/like_button.html" %}
+  </div>
+  {% if quote.categories %}
+    <div class="mg-chips mg-mt-3">
+      {% for category in quote.categories %}
+        <a class="mg-chip" href="/categories/{{ category.slug }}">{{ category.name }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% if show_created_date|default(false) %}
+    <time class="mg-hero__meta mg-block mg-mt-3" datetime="{{ quote.created_at.isoformat() }}">{{ quote.created_date }} 公開</time>
+  {% endif %}
+</article>

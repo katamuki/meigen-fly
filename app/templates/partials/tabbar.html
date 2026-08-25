@@ -1,0 +1,7 @@
+<nav class="mg-tabbar" aria-label="モバイルナビ">
+  <a class="mg-tab" href="/"{% if nav == "home" %} aria-current="page"{% endif %}><span>ホーム</span></a>
+  <a class="mg-tab" href="/quotes"{% if nav == "quotes" %} aria-current="page"{% endif %}><span>名言</span></a>
+  <a class="mg-tab" href="/authors"{% if nav == "authors" %} aria-current="page"{% endif %}><span>著者</span></a>
+  <a class="mg-tab" href="/ranking"{% if nav == "ranking" %} aria-current="page"{% endif %}><span>ランキング</span></a>
+  <a class="mg-tab" href="/random"{% if nav == "random" %} aria-current="page"{% endif %}><span>ランダム</span></a>
+</nav>

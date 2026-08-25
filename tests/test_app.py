@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 
+from fastapi.responses import HTMLResponse
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
@@ -23,7 +24,7 @@ def test_home_renders_template_with_cache_and_security_headers() -> None:
 
 
 def test_static_file_is_served_with_immutable_cache() -> None:
-    response = client.get("/static/styles.6b0387e0.css")
+    response = client.get("/static/tokens.74bc89e2.css")
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
@@ -74,11 +75,11 @@ def test_author_list_and_detail_use_distinct_cache_policies() -> None:
     detail_request = client.build_request("GET", "/authors/example")
 
     assert (
-        cache_control_for(list_request, main.HTMLResponse())
+        cache_control_for(list_request, HTMLResponse())
         == "public, s-maxage=3600, max-age=300"
     )
     assert (
-        cache_control_for(detail_request, main.HTMLResponse())
+        cache_control_for(detail_request, HTMLResponse())
         == "public, s-maxage=86400, max-age=3600"
     )
 
@@ -111,6 +112,6 @@ def test_og_images_use_thirty_day_edge_cache() -> None:
     for path in ("/quotes/q1/og.png", "/authors/example/og.png"):
         request = client.build_request("GET", path)
         assert (
-            cache_control_for(request, main.HTMLResponse())
+            cache_control_for(request, HTMLResponse())
             == "public, s-maxage=2592000, max-age=86400"
         )

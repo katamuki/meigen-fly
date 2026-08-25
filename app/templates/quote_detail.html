@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% set nav = "quotes" %}
+{% block title %}{{ quote.display_text|truncate(32) }}{% if quote.author %} — {{ quote.author.name }}{% endif %}｜名言集.com{% endblock %}
+{% block meta_description %}{{ quote.display_text }}{% if quote.author %}（{{ quote.author.name }}）{% endif %}{% endblock %}
+
+{% block content %}
+  <nav class="mg-breadcrumb" aria-label="パンくず">
+    <a href="/">ホーム</a><span class="sep">/</span>
+    <a href="/quotes">名言一覧</a><span class="sep">/</span>
+    <span class="current">名言</span>
+  </nav>
+
+  <article class="mg-text" data-quote-id="{{ quote.id }}">
+    <div class="mg-hero">
+      <h1 class="mg-hero__quote" lang="{{ quote.display_language }}">{{ quote.display_text }}</h1>
+      {% if quote.alternate_text %}
+        <p class="mg-quote-alternate" lang="{{ quote.alternate_language }}">{{ quote.alternate_text }}</p>
+      {% endif %}
+      <div class="mg-hero__rule"></div>
+
+      {% if quote.character %}
+        <a class="mg-author" href="/characters/{{ quote.character.slug }}">{{ quote.character.name }}</a>
+      {% elif quote.author %}
+        <a class="mg-author" href="/authors/{{ quote.author.slug }}">{{ quote.author.name }}</a>
+      {% else %}
+        <span class="mg-author">作者不明</span>
+      {% endif %}
+
+      {% if quote.source %}
+        <div class="mg-hero__source">
+          出典：<a href="/sources/{{ quote.source.slug }}">{{ quote.source.title }}</a>{% if quote.source.published_year %} / {{ quote.source.published_year }}年{% endif %}
+        </div>
+      {% endif %}
+      {% if quote.character and quote.author %}
+        <div class="mg-hero__source">著者：<a href="/authors/{{ quote.author.slug }}">{{ quote.author.name }}</a></div>
+      {% endif %}
+
+      <div class="mg-actions">
+        {% include "partials/like_button.html" %}
+      </div>
+
+      {% if quote.categories %}
+        <div class="mg-chips mg-chips--center mg-mt-6">
+          {% for category in quote.categories %}
+            <a class="mg-chip" href="/categories/{{ category.slug }}">{{ category.name }}</a>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if quote.context_note %}
+      <section class="mg-note mg-mb-8">
+        <h2 class="mg-h2 mg-mb-4">解説</h2>
+        <p>{{ quote.context_note }}</p>
+      </section>
+    {% endif %}
+
+    {% if quote.author %}
+      <a class="mg-author-card" href="/authors/{{ quote.author.slug }}">
+        <span class="mg-avatar">{{ quote.author.name[0] }}</span>
+        <span class="mg-author-card__body">
+          <span class="mg-author mg-block">{{ quote.author.name }}</span>
+          {% if quote.author.professions or quote.author.countries %}
+            <span class="mg-author-card__meta mg-block">
+              {{ quote.author.professions|map(attribute='name')|join('・') }}{% if quote.author.professions and quote.author.countries %} · {% endif %}{{ quote.author.countries|map(attribute='name')|join('・') }}
+            </span>
+          {% endif %}
+        </span>
+        <span class="mg-chip mg-chip--accent">著者の名言 {{ quote.author.quote_count|comma }}件 →</span>
+      </a>
+    {% endif %}
+
+    {% if related %}
+      <section class="mg-mt-8">
+        <h2 class="mg-h2 mg-mb-4">この著者の名言</h2>
+        <div class="mg-stack">
+          {% for quote in related %}
+            {% include "partials/quote_card.html" %}
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  </article>
+{% endblock %}

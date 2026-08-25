@@ -1,0 +1,18 @@
+<header class="mg-header">
+  <a class="mg-logo" href="/">名言集<span>.com</span></a>
+  <nav class="mg-nav mg-nav--desktop" aria-label="グローバルナビ">
+    <a href="/quotes"{% if nav == "quotes" %} aria-current="page"{% endif %}>名言</a>
+    <a href="/authors"{% if nav == "authors" %} aria-current="page"{% endif %}>著者</a>
+    <a href="/categories"{% if nav == "categories" %} aria-current="page"{% endif %}>カテゴリ</a>
+    <a href="/ranking"{% if nav == "ranking" %} aria-current="page"{% endif %}>ランキング</a>
+    <a href="/random"{% if nav == "random" %} aria-current="page"{% endif %}>ランダム</a>
+  </nav>
+  <span class="mg-header__spacer"></span>
+  <form class="mg-search" action="/search" method="get" role="search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4-4"></path></svg>
+    <input class="mg-search__input" type="search" name="q" placeholder="名言・著者を検索" aria-label="検索">
+  </form>
+  <button class="mg-iconbtn mg-theme-toggle" type="button" aria-label="テーマ切替">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"></path></svg>
+  </button>
+</header>

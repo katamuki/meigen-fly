@@ -1,0 +1,15 @@
+<nav class="mg-pagination" aria-label="ページ送り">
+  {% if pagination.has_prev %}
+    <a class="mg-page" href="{{ pagination.prev_url }}" aria-label="前へ">‹</a>
+  {% else %}
+    <span class="mg-page is-disabled" aria-disabled="true">‹</span>
+  {% endif %}
+  {% for item in pagination.pages %}
+    <a class="mg-page{% if item.number == pagination.number %} is-active{% endif %}" href="{{ item.url }}"{% if item.number == pagination.number %} aria-current="page"{% endif %}>{{ item.number }}</a>
+  {% endfor %}
+  {% if pagination.has_next %}
+    <a class="mg-page" href="{{ pagination.next_url }}" aria-label="次へ">›</a>
+  {% else %}
+    <span class="mg-page is-disabled" aria-disabled="true">›</span>
+  {% endif %}
+</nav>

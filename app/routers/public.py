@@ -10,7 +10,13 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.engine import Connection
 
 from app.db import get_connection
-from app.services.quotes import get_quote, homepage_data, list_quotes, parse_qid
+from app.services.quotes import (
+    SQLITE_MAX_INTEGER,
+    get_quote,
+    homepage_data,
+    list_quotes,
+    parse_qid,
+)
 
 APP_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=APP_DIR / "templates")
@@ -18,7 +24,7 @@ templates.env.filters["comma"] = lambda value: f"{value:,}"
 
 router = APIRouter()
 ConnectionDependency = Annotated[Connection, Depends(get_connection)]
-PositiveId = Annotated[int | None, Query(ge=1)]
+PositiveId = Annotated[int | None, Query(ge=1, le=SQLITE_MAX_INTEGER)]
 
 
 def _page_url(base_path: str, page: int, query: dict[str, int]) -> str:

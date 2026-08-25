@@ -255,7 +255,12 @@ a.mg-hero__quote:hover { text-decoration: none; color: var(--ink); }
    ============================================================ */
 @media (max-width: 640px) {
   .mg-nav--desktop { display: none; }        /* PCナビは隠す */
-  .mg-header .mg-search { min-width: 0; flex: 1; }
+  .mg-header { gap: var(--sp-3); padding: var(--sp-3) var(--gutter); }
+  .mg-header .mg-logo { flex: none; font-size: var(--fs-h2); }
+  .mg-header__spacer { display: none; }
+  .mg-header .mg-search { min-width: 0; flex: 1 1 auto; padding-inline: var(--sp-3); }
+  .mg-header .mg-search > svg { flex: 0 0 15px; }
+  .mg-header .mg-search__input { min-width: 0; }
   .mg-tabbar { display: flex; }              /* 下部タブを表示 */
   .mg-cols { grid-template-columns: 1fr; gap: var(--sp-8); }
   .mg-author-profile { flex-direction: column; text-align: center; gap: var(--sp-4); }

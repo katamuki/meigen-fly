@@ -25,6 +25,7 @@ from app.schema import (
 )
 
 QUOTES_PER_PAGE = 20
+SQLITE_MAX_INTEGER = 2**63 - 1
 _QID_PATTERN = re.compile(r"q([1-9][0-9]*)\Z")
 
 
@@ -34,9 +35,10 @@ def parse_qid(identifier: str) -> int | None:
     if match is None:
         return None
     try:
-        return int(match.group(1))
+        quote_id = int(match.group(1))
     except ValueError:
         return None
+    return quote_id if quote_id <= SQLITE_MAX_INTEGER else None
 
 
 def quote_path(quote: Mapping[str, object]) -> str:
@@ -299,6 +301,17 @@ def list_quotes(
         select(func.count()).select_from(quotes).where(*conditions)
     ).scalar_one()
     total_pages = ceil(total / per_page) if total else 0
+
+    # Do not calculate or bind an OFFSET for an out-of-range page. Python's
+    # integers are unbounded, while SQLite INTEGER parameters are signed 64-bit.
+    if page > 1 and (total_pages == 0 or page > total_pages):
+        return {
+            "quotes": [],
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+        }
 
     statement = _quote_select().where(*conditions)
     if latest:

@@ -16,6 +16,7 @@ from app.schema import (
     quote_categories,
     quotes,
 )
+from app.services.quotes import SQLITE_MAX_INTEGER
 
 
 @pytest.fixture
@@ -186,7 +187,17 @@ def test_quote_url_resolution_and_public_visibility(public_client: TestClient) -
     assert qid_without_slug.status_code == 200
     assert 'data-quote-id="2"' in qid_without_slug.text
 
-    for identifier in ("q0", "q01", "Q2", "q2x", "q999", "private-quote", "q3"):
+    for identifier in (
+        "q0",
+        "q01",
+        "Q2",
+        "q2x",
+        "q999",
+        f"q{SQLITE_MAX_INTEGER}",
+        f"q{SQLITE_MAX_INTEGER + 1}",
+        "private-quote",
+        "q3",
+    ):
         response = public_client.get(f"/quotes/{identifier}")
         assert response.status_code == 404
         assert response.headers["cache-control"] == "private, no-store"
@@ -230,6 +241,22 @@ def test_quote_list_pagination_and_latest_order(public_client: TestClient) -> No
     assert public_client.get("/quotes/page/not-a-page").status_code == 404
 
 
+def test_sqlite_integer_boundaries_do_not_raise_server_errors(
+    public_client: TestClient,
+) -> None:
+    for page in (SQLITE_MAX_INTEGER, SQLITE_MAX_INTEGER + 1):
+        response = public_client.get(f"/quotes/page/{page}")
+        assert response.status_code == 404
+        assert response.headers["cache-control"] == "private, no-store"
+
+    for filter_name in ("author_id", "category_id", "profession_id"):
+        boundary = public_client.get(f"/quotes?{filter_name}={SQLITE_MAX_INTEGER}")
+        overflow = public_client.get(f"/quotes?{filter_name}={SQLITE_MAX_INTEGER + 1}")
+        assert boundary.status_code == 200
+        assert overflow.status_code == 422
+        assert overflow.headers["cache-control"] == "private, no-store"
+
+
 def test_home_and_quote_pages_use_public_cache_headers(
     public_client: TestClient,
 ) -> None:
@@ -256,8 +283,13 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
     for path in (
         "/static/theme.caadaed0.js",
         "/static/tokens.74bc89e2.css",
-        "/static/components.76732ec5.css",
+        "/static/components.fae1678a.css",
     ):
         asset = public_client.get(path)
         assert asset.status_code == 200
         assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+    mobile_css = public_client.get("/static/components.fae1678a.css").text
+    assert ".mg-header__spacer { display: none; }" in mobile_css
+    assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
+    assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css

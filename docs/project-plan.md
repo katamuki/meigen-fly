@@ -285,7 +285,7 @@ meigen-fly/
 
 ### フェーズ3: 公開ページ実装
 - [x] 名言一覧/詳細（quotes。3-A、2026-08-25）
-- [ ] その他の一覧/詳細（authors, categories, characters, sources, professions）
+- [x] その他の一覧/詳細（authors, categories, characters, sources, professions, countries。3-B、2026-08-26）
 - [x] トップ（注目名言は3-Cまでプレースホルダー。3-A、2026-08-25）
 - [ ] ランキング・ランダム
 - [ ] 検索（HTMXインクリメンタル・D1）

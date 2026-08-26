@@ -51,6 +51,9 @@ def _public_conditions(
     author_id: int | None = None,
     category_id: int | None = None,
     profession_id: int | None = None,
+    source_id: int | None = None,
+    character_id: int | None = None,
+    country_id: int | None = None,
 ) -> list:
     conditions = [quotes.c.enable == 1]
     if author_id is not None:
@@ -85,6 +88,21 @@ def _public_conditions(
             .exists()
         )
         conditions.append(profession_match)
+    if source_id is not None:
+        conditions.append(quotes.c.source_id == source_id)
+    if character_id is not None:
+        conditions.append(quotes.c.character_id == character_id)
+    if country_id is not None:
+        country_match = (
+            select(literal(1))
+            .select_from(author_country)
+            .where(
+                author_country.c.author_id == quotes.c.author_id,
+                author_country.c.country_id == country_id,
+            )
+            .exists()
+        )
+        conditions.append(country_match)
     return conditions
 
 
@@ -289,6 +307,9 @@ def list_quotes(
     author_id: int | None = None,
     category_id: int | None = None,
     profession_id: int | None = None,
+    source_id: int | None = None,
+    character_id: int | None = None,
+    country_id: int | None = None,
     latest: bool = False,
     per_page: int = QUOTES_PER_PAGE,
 ) -> dict:
@@ -296,6 +317,9 @@ def list_quotes(
         author_id=author_id,
         category_id=category_id,
         profession_id=profession_id,
+        source_id=source_id,
+        character_id=character_id,
+        country_id=country_id,
     )
     total = connection.execute(
         select(func.count()).select_from(quotes).where(*conditions)

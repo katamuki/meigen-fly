@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% if entity_type == "author" %}{% set nav = "authors" %}{% elif entity_type == "category" %}{% set nav = "categories" %}{% endif %}
+{% set label = entity.name if entity.name is defined else entity.title %}
+{% block title %}{{ label }}の名言｜名言集.com{% endblock %}
+{% block content %}
+<nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><span class="current">{{ label }}</span></nav>
+<div class="mg-wide mg-author-profile" data-entity-type="{{ entity_type }}" data-entity-id="{{ entity.id }}" data-quote-count="{{ entity.quote_count }}">
+  <span class="mg-avatar mg-avatar--lg">{{ label[0] }}</span>
+  <div class="mg-author-profile__body"><h1 class="mg-h1">{{ label }}</h1>
+    {% if entity.professions %}<div class="mg-chips mg-mt-4">{% for profession in entity.professions %}<a class="mg-chip" href="/professions/{{ profession.slug }}">{{ profession.name }}</a>{% endfor %}</div>{% endif %}
+    {% if entity.countries %}<div class="mg-chips mg-mt-4">{% for country in entity.countries %}<a class="mg-chip" href="/authors/places/{{ country.slug }}">{{ country.name }}</a>{% endfor %}</div>{% endif %}
+    {% if entity.types %}<div class="mg-chips mg-mt-4">{% for type in entity.types %}<a class="mg-chip" href="/sources?type={{ type.slug }}">{{ type.name }}</a>{% endfor %}</div>{% endif %}
+    {% if entity.description %}<p class="mg-author-profile__bio">{{ entity.description }}</p>{% endif %}
+  </div>
+  <div class="mg-author-profile__stat"><div class="n">{{ entity.quote_count|comma }}</div><div class="l">名言</div></div>
+</div>
+<div class="mg-wide mg-pb-12"><div class="mg-grid-2">{% for quote in quotes %}{% include "partials/quote_card.html" %}{% endfor %}</div><div class="mg-mt-8">{% include "partials/pagination.html" %}</div></div>
+{% endblock %}

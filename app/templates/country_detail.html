@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% set nav = "authors" %}
+{% block title %}{{ country.name }}の著者と名言｜名言集.com{% endblock %}
+{% block content %}
+<nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><a href="/authors">著者</a><span class="sep">/</span><span class="current">{{ country.name }}</span></nav>
+<div class="mg-wide mg-page-body" data-entity-type="country" data-entity-id="{{ country.id }}" data-quote-count="{{ country.quote_count }}">
+  <h1 class="mg-h1">{{ country.name }}の著者</h1><p class="mg-hero__meta mg-mt-4">公開名言 {{ country.quote_count|comma }}件</p>
+  <div class="mg-grid-3 mg-mt-6">{% for author in authors %}<a class="mg-author-card" href="/authors/{{ author.slug }}"><span class="mg-avatar">{{ author.name[0] }}</span><span class="mg-author-card__body"><strong>{{ author.name }}</strong><span class="mg-author-card__meta">名言 {{ author.quote_count|comma }}件</span></span></a>{% endfor %}</div>
+  <div class="mg-mt-8">{% include "partials/pagination.html" %}</div>
+</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% set nav = "categories" %}
+{% block title %}カテゴリ一覧｜名言集.com{% endblock %}
+{% block content %}
+<nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><span class="current">カテゴリ</span></nav>
+<div class="mg-wide mg-page-body">
+  <h1 class="mg-h1 mg-mb-6">カテゴリから探す</h1>
+  <div class="mg-grid-3">
+    {% for parent in categories %}
+      <section class="mg-cat-card" data-category-id="{{ parent.id }}" data-quote-count="{{ parent.quote_count }}">
+        <div class="mg-cat-card__head"><a class="mg-cat-card__title" href="/categories/{{ parent.slug }}">{{ parent.name }}</a><span class="mg-hero__meta">{{ parent.quote_count|comma }}件</span></div>
+        <div class="mg-cat-card__rule"></div>
+        <div class="mg-chips">{% for child in parent.children %}<a class="mg-chip" href="/categories/{{ child.slug }}" data-category-id="{{ child.id }}" data-quote-count="{{ child.quote_count }}">{{ child.name }} {{ child.quote_count|comma }}</a>{% endfor %}</div>
+      </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

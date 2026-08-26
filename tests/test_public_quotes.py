@@ -9,12 +9,18 @@ from app.db import create_db_engine, get_connection, metadata
 from app.instants import format_instant
 from app.main import app
 from app.schema import (
+    author_country,
     author_professions,
     authors,
     categories,
+    characters,
+    countries,
     professions,
     quote_categories,
     quotes,
+    source_type_assignments,
+    source_types,
+    sources,
 )
 from app.services.quotes import SQLITE_MAX_INTEGER
 
@@ -34,6 +40,7 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "id": 1,
                     "name": "著者一",
                     "slug": "author-one",
+                    "name_reading": "ちょしゃいち",
                     "created_at": first,
                     "updated_at": first,
                 },
@@ -41,6 +48,7 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "id": 2,
                     "name": "著者二",
                     "slug": "author-two",
+                    "name_reading": None,
                     "created_at": first,
                     "updated_at": first,
                 },
@@ -48,14 +56,24 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
         )
         connection.execute(
             professions.insert(),
-            {
-                "id": 20,
-                "name": "哲学者",
-                "slug": "philosopher",
-                "display_order": 1,
-                "created_at": first,
-                "updated_at": first,
-            },
+            [
+                {
+                    "id": 20,
+                    "name": "哲学者",
+                    "slug": "philosopher",
+                    "display_order": 1,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+                {
+                    "id": 21,
+                    "name": "作家",
+                    "slug": "writer",
+                    "display_order": 2,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+            ],
         )
         connection.execute(
             author_professions.insert(),
@@ -65,6 +83,106 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                 "display_order": 1,
                 "created_at": first,
             },
+        )
+        connection.execute(
+            countries.insert(),
+            [
+                {
+                    "id": 30,
+                    "name": "日本",
+                    "slug": "japan",
+                    "code": "JP",
+                    "created_at": first,
+                    "updated_at": first,
+                },
+                {
+                    "id": 31,
+                    "name": "フランス",
+                    "slug": "france",
+                    "code": "FR",
+                    "created_at": first,
+                    "updated_at": first,
+                },
+            ],
+        )
+        connection.execute(
+            author_country.insert(),
+            {
+                "author_id": 1,
+                "country_id": 30,
+                "is_birth_country": 1,
+                "created_at": first,
+            },
+        )
+        connection.execute(
+            source_types.insert(),
+            [
+                {
+                    "id": 40,
+                    "name": "書籍",
+                    "slug": "book",
+                    "display_order": 1,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+                {
+                    "id": 41,
+                    "name": "映画",
+                    "slug": "movie",
+                    "display_order": 2,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+            ],
+        )
+        connection.execute(
+            sources.insert(),
+            [
+                {
+                    "id": 50,
+                    "title": "第一の本",
+                    "slug": "first-book",
+                    "author_id": 1,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+                {
+                    "id": 51,
+                    "title": "空の映画",
+                    "slug": "empty-movie",
+                    "author_id": None,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+            ],
+        )
+        connection.execute(
+            source_type_assignments.insert(),
+            [
+                {"source_id": 50, "type_id": 40, "created_at": first},
+                {"source_id": 51, "type_id": 41, "created_at": first},
+            ],
+        )
+        connection.execute(
+            characters.insert(),
+            [
+                {
+                    "id": 60,
+                    "name": "主人公",
+                    "slug": "hero",
+                    "source_id": 50,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+                {
+                    "id": 61,
+                    "name": "登場なし",
+                    "slug": "unused-character",
+                    "source_id": None,
+                    "created_at": first,
+                    "updated_at": first,
+                },
+            ],
         )
         connection.execute(
             categories.insert(),
@@ -99,6 +217,16 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "created_at": first,
                     "updated_at": first,
                 },
+                {
+                    "id": 13,
+                    "name": "未分類",
+                    "slug": "unused-category",
+                    "sort_order": 2,
+                    "level": 1,
+                    "parent_id": None,
+                    "created_at": first,
+                    "updated_at": first,
+                },
             ],
         )
         connection.execute(
@@ -111,6 +239,8 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "text_en": "English one",
                     "display_language_preference": "en",
                     "author_id": 1,
+                    "source_id": 50,
+                    "character_id": 60,
                     "enable": 1,
                     "created_at": first,
                     "updated_at": first,
@@ -122,6 +252,8 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "text_en": None,
                     "display_language_preference": "ja",
                     "author_id": 2,
+                    "source_id": None,
+                    "character_id": None,
                     "enable": 1,
                     "created_at": second,
                     "updated_at": second,
@@ -133,6 +265,8 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "text_en": None,
                     "display_language_preference": "ja",
                     "author_id": 1,
+                    "source_id": 50,
+                    "character_id": 60,
                     "enable": 0,
                     "created_at": first,
                     "updated_at": first,
@@ -145,6 +279,8 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                         "text_en": None,
                         "display_language_preference": "ja",
                         "author_id": 2,
+                        "source_id": None,
+                        "character_id": None,
                         "enable": 1,
                         "created_at": first,
                         "updated_at": first,
@@ -293,3 +429,98 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
     assert ".mg-header__spacer { display: none; }" in mobile_css
     assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
     assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css
+
+
+def test_authors_work_with_empty_ranking_snapshot_and_public_counts(
+    public_client: TestClient,
+) -> None:
+    listing = public_client.get("/authors")
+    detail = public_client.get("/authors/author-one")
+
+    assert listing.status_code == 200
+    assert 'data-entity-id="1" data-quote-count="1"' in listing.text
+    assert 'data-entity-id="2" data-quote-count="21"' in listing.text
+    assert listing.text.index('data-entity-id="2"') < listing.text.index(
+        'data-entity-id="1"'
+    )
+    assert detail.status_code == 200
+    assert (
+        'data-entity-type="author" data-entity-id="1" data-quote-count="1"'
+        in detail.text
+    )
+    assert "非公開三" not in detail.text
+    assert public_client.get("/authors/not-found").status_code == 404
+
+
+def test_category_tree_counts_distinct_public_quotes_and_keeps_empty_masters(
+    public_client: TestClient,
+) -> None:
+    listing = public_client.get("/categories")
+
+    assert listing.status_code == 200
+    # Quote 1 belongs to both children, but the parent counts it only once.
+    assert 'data-category-id="10" data-quote-count="2"' in listing.text
+    assert 'data-category-id="11" data-quote-count="1"' in listing.text
+    assert 'data-category-id="12" data-quote-count="2"' in listing.text
+    assert 'data-category-id="13" data-quote-count="0"' in listing.text
+    assert public_client.get("/categories/life").status_code == 200
+    assert (
+        'data-entity-type="category" data-entity-id="10" data-quote-count="2"'
+        in public_client.get("/categories/life").text
+    )
+    assert public_client.get("/categories/not-found").status_code == 404
+
+
+def test_sources_support_type_filter_public_counts_and_slug_404(
+    public_client: TestClient,
+) -> None:
+    listing = public_client.get("/sources")
+    books = public_client.get("/sources?type=book")
+    movies = public_client.get("/sources?type=movie")
+    detail = public_client.get("/sources/first-book")
+
+    assert 'data-entity-id="50" data-quote-count="1"' in listing.text
+    assert 'data-entity-id="51" data-quote-count="0"' in listing.text
+    assert "第一の本" in books.text
+    assert "空の映画" not in books.text
+    assert "空の映画" in movies.text
+    assert detail.status_code == 200
+    assert (
+        'data-entity-type="source" data-entity-id="50" data-quote-count="1"'
+        in detail.text
+    )
+    assert "非公開三" not in detail.text
+    assert public_client.get("/sources/not-found").status_code == 404
+
+
+def test_character_profession_and_country_pages_keep_zero_counts_and_404(
+    public_client: TestClient,
+) -> None:
+    characters_page = public_client.get("/characters")
+    professions_page = public_client.get("/professions")
+    authors_page = public_client.get("/authors")
+
+    assert 'data-entity-id="60" data-quote-count="1"' in characters_page.text
+    assert 'data-entity-id="61" data-quote-count="0"' in characters_page.text
+    assert 'data-entity-id="20" data-quote-count="1"' in professions_page.text
+    assert 'data-entity-id="21" data-quote-count="0"' in professions_page.text
+    assert 'data-country-id="30">日本 1' in authors_page.text
+    assert 'data-country-id="31">フランス 0' in authors_page.text
+
+    expected_counts = {
+        "/characters/hero": 'data-entity-type="character" data-entity-id="60" data-quote-count="1"',
+        "/professions/philosopher": 'data-entity-type="profession" data-entity-id="20" data-quote-count="1"',
+        "/professions/philosopher/quotes": 'data-entity-type="profession" data-entity-id="20" data-quote-count="1"',
+        "/authors/places/japan": 'data-entity-type="country" data-entity-id="30" data-quote-count="1"',
+    }
+    for path, expected in expected_counts.items():
+        response = public_client.get(path)
+        assert response.status_code == 200
+        assert expected in response.text
+        assert "非公開三" not in response.text
+    for path in (
+        "/characters/not-found",
+        "/professions/not-found",
+        "/authors/places/not-found",
+    ):
+        assert public_client.get(path).status_code == 404

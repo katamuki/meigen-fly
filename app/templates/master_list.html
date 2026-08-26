@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}｜名言集.com{% endblock %}
+{% block content %}
+<nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><span class="current">{{ title }}</span></nav>
+<div class="mg-wide mg-page-body">
+  <h1 class="mg-h1 mg-mb-6">{{ title }}</h1>
+  {% if source_types is defined %}<div class="mg-chips mg-mb-6"><a class="mg-chip{% if not active_source_type %} mg-chip--sort-active{% endif %}" href="/sources">すべて</a>{% for source_type in source_types %}<a class="mg-chip{% if active_source_type == source_type.slug %} mg-chip--sort-active{% endif %}" href="/sources?type={{ source_type.slug }}">{{ source_type.name }}</a>{% endfor %}</div>{% endif %}
+  <p class="mg-hero__meta">全 {{ total|comma }}件</p>
+  <div class="mg-grid-3 mg-mt-4">
+    {% for item in items %}
+      <a class="mg-author-card" href="{{ base_path }}/{{ item.slug }}" data-entity-id="{{ item.id }}" data-quote-count="{{ item.quote_count }}">
+        <span class="mg-avatar">{{ item.name[0] }}</span><span class="mg-author-card__body"><strong>{{ item.name }}</strong>{% if item.author_name %}<span class="mg-author-card__meta">{{ item.author_name }}</span>{% endif %}<span class="mg-author-card__meta">名言 {{ item.quote_count|comma }}件</span></span>
+      </a>
+    {% endfor %}
+  </div>
+  {% if pagination %}<div class="mg-mt-8">{% include "partials/pagination.html" %}</div>{% endif %}
+</div>
+{% endblock %}

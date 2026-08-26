@@ -76,14 +76,14 @@ ROOT_RULE = "public, s-maxage=300, max-age=60"  # "/" 完全一致用
 # 長さ降順で評価して最長prefix優先にする
 _SORTED_RULES = sorted(CACHE_RULES.items(), key=lambda kv: len(kv[0]), reverse=True)
 
+
 @app.middleware("http")
 async def cache_headers(request, call_next):
     response = await call_next(request)
     path = request.url.path
     # /adminとその配下、/searchとその配下、/login、/healthzは必ずno-store
-    if (
-        path in ("/admin", "/search", "/login", "/healthz")
-        or path.startswith(("/admin/", "/search/"))
+    if path in ("/admin", "/search", "/login", "/healthz") or path.startswith(
+        ("/admin/", "/search/")
     ):
         response.headers["Cache-Control"] = "private, no-store"
         return response

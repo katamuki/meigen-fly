@@ -41,6 +41,12 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "name": "著者一",
                     "slug": "author-one",
                     "name_reading": "ちょしゃいち",
+                    "birth_date": "1867-02-09",
+                    "birth_era": "ad",
+                    "birth_precision": "day",
+                    "death_date": "1916-01-01",
+                    "death_era": "ad",
+                    "death_precision": "year",
                     "created_at": first,
                     "updated_at": first,
                 },
@@ -49,6 +55,12 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "name": "著者二",
                     "slug": "author-two",
                     "name_reading": None,
+                    "birth_date": None,
+                    "birth_era": "ad",
+                    "birth_precision": "unknown",
+                    "death_date": None,
+                    "death_era": "ad",
+                    "death_precision": "unknown",
                     "created_at": first,
                     "updated_at": first,
                 },
@@ -445,10 +457,15 @@ def test_authors_work_with_empty_ranking_snapshot_and_public_counts(
     )
     assert detail.status_code == 200
     assert (
+        '<span class="mg-chip" data-author-lifespan>1867年2月9日 - 1916年</span>'
+        in detail.text
+    )
+    assert (
         'data-entity-type="author" data-entity-id="1" data-quote-count="1"'
         in detail.text
     )
     assert "非公開三" not in detail.text
+    assert "data-author-lifespan" not in public_client.get("/authors/author-two").text
     assert public_client.get("/authors/not-found").status_code == 404
 
 

@@ -7,6 +7,7 @@ from sqlalchemy import func, literal, select
 from sqlalchemy.engine import Connection
 
 from app.instants import parse_instant
+from app.presentation import format_lifespan
 from app.schema import (
     author_country,
     author_professions,
@@ -165,6 +166,14 @@ def get_author(connection: Connection, slug: str) -> dict | None:
         return None
     result = dict(row)
     result.update(_author_links(connection, result["id"]))
+    result["lifespan"] = format_lifespan(
+        result["birth_date"],
+        result["birth_precision"],
+        result["birth_era"],
+        result["death_date"],
+        result["death_precision"],
+        result["death_era"],
+    )
     result["created_at"] = parse_instant(result["created_at"])
     result["updated_at"] = parse_instant(result["updated_at"])
     return result

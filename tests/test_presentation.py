@@ -1,6 +1,11 @@
 import pytest
 
-from app.presentation import QuoteDisplay, resolve_quote_display
+from app.presentation import (
+    QuoteDisplay,
+    format_life_date,
+    format_lifespan,
+    resolve_quote_display,
+)
 
 
 @pytest.mark.parametrize(
@@ -64,3 +69,47 @@ def test_resolve_quote_display_rejects_invalid_records() -> None:
                 "display_language_preference": "ja",
             }
         )
+
+
+@pytest.mark.parametrize(
+    ("date_text", "precision", "era", "expected"),
+    [
+        ("1867-02-09", "day", "ad", "1867年2月9日"),
+        ("1867-02-01", "month", "ad", "1867年2月"),
+        ("1867-01-01", "year", "ad", "1867年"),
+        ("0480-01-01", "year", "bc", "紀元前480年"),
+        (None, "unknown", "ad", None),
+    ],
+)
+def test_format_life_date_respects_precision_and_era(
+    date_text: str | None,
+    precision: str,
+    era: str,
+    expected: str | None,
+) -> None:
+    assert format_life_date(date_text, precision, era) == expected
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        (
+            ("1867-02-09", "day", "ad", "1916-01-01", "year", "ad"),
+            "1867年2月9日 - 1916年",
+        ),
+        (
+            ("1961-07-08", "day", "ad", None, "unknown", "ad"),
+            "1961年7月8日 -",
+        ),
+        (
+            (None, "unknown", "ad", "1916-01-01", "year", "ad"),
+            "不明 - 1916年",
+        ),
+        ((None, "unknown", "ad", None, "unknown", "ad"), None),
+    ],
+)
+def test_format_lifespan_handles_partial_and_unknown_dates(
+    values: tuple,
+    expected: str | None,
+) -> None:
+    assert format_lifespan(*values) == expected

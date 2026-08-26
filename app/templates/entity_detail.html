@@ -9,6 +9,7 @@
   <div class="mg-author-profile__body"><h1 class="mg-h1">{{ label }}</h1>
     {% if entity.professions %}<div class="mg-chips mg-mt-4">{% for profession in entity.professions %}<a class="mg-chip" href="/professions/{{ profession.slug }}">{{ profession.name }}</a>{% endfor %}</div>{% endif %}
     {% if entity.countries %}<div class="mg-chips mg-mt-4">{% for country in entity.countries %}<a class="mg-chip" href="/authors/places/{{ country.slug }}">{{ country.name }}</a>{% endfor %}</div>{% endif %}
+    {% if entity_type == "author" and entity.lifespan %}<div class="mg-chips mg-mt-4"><span class="mg-chip" data-author-lifespan>{{ entity.lifespan }}</span></div>{% endif %}
     {% if entity.types %}<div class="mg-chips mg-mt-4">{% for type in entity.types %}<a class="mg-chip" href="/sources?type={{ type.slug }}">{{ type.name }}</a>{% endfor %}</div>{% endif %}
     {% if entity.description %}<p class="mg-author-profile__bio">{{ entity.description }}</p>{% endif %}
   </div>

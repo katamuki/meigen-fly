@@ -393,12 +393,50 @@ def get_quote(connection: Connection, identifier: str) -> dict | None:
     return quote
 
 
+def list_ranked_quotes(
+    connection: Connection, *, limit: int = QUOTES_PER_PAGE
+) -> list[dict]:
+    """Read public quotes in stable score order from the current snapshot."""
+    rows = connection.execute(
+        _quote_select()
+        .where(quotes.c.enable == 1, quote_ranking_scores.c.quote_id.is_not(None))
+        .order_by(quote_ranking_scores.c.score_total.desc(), quotes.c.id)
+        .limit(limit)
+    ).mappings()
+    return _present_quotes(connection, rows)
+
+
+def random_quotes(connection: Connection) -> list[dict]:
+    """Choose at most 20 public quote IDs using SQLite's simple random order."""
+    quote_ids = list(
+        connection.execute(
+            select(quotes.c.id)
+            .where(quotes.c.enable == 1)
+            .order_by(func.random())
+            .limit(20)
+        ).scalars()
+    )
+    if not quote_ids:
+        return []
+    rows = connection.execute(
+        _quote_select().where(quotes.c.id.in_(quote_ids))
+    ).mappings()
+    presented = {quote["id"]: quote for quote in _present_quotes(connection, rows)}
+    return [presented[quote_id] for quote_id in quote_ids]
+
+
 def homepage_data(connection: Connection) -> dict:
     latest = list_quotes(connection, latest=True, per_page=6)["quotes"]
+    ranking = list_ranked_quotes(connection, limit=1)
     top_categories = connection.execute(
         select(categories.c.id, categories.c.name, categories.c.slug)
         .where(categories.c.level == 1)
         .order_by(categories.c.sort_order, categories.c.id)
         .limit(12)
     ).mappings()
-    return {"latest": latest, "top_categories": [dict(row) for row in top_categories]}
+    return {
+        "featured": ranking[0] if ranking else (latest[0] if latest else None),
+        "featured_from_ranking": bool(ranking),
+        "latest": latest,
+        "top_categories": [dict(row) for row in top_categories],
+    }

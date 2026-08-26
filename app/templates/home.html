@@ -5,10 +5,18 @@
 {% block content %}
   <section class="mg-hero-band">
     <div class="mg-text">
-      <p class="mg-eyebrow">心に残る言葉を探す</p>
-      <h1 class="mg-hero__quote">名言との新しい出会いを。</h1>
-      <p class="mg-hero__meta mg-mt-4">注目名言はランキング連動の準備中です。</p>
-      <a class="mg-chip mg-chip--accent mg-mt-6" href="/quotes">名言一覧を見る →</a>
+      {% if featured %}
+        <p class="mg-eyebrow">{{ "ランキング注目名言" if featured_from_ranking else "新着名言から" }}</p>
+        <h1><a class="mg-hero__quote" href="{{ featured.path }}" lang="{{ featured.display_language }}">{{ featured.display_text }}</a></h1>
+        <div class="mg-hero__by">
+          {% if featured.author %}<a class="mg-author" href="/authors/{{ featured.author.slug }}">{{ featured.author.name }}</a>{% else %}<span class="mg-author">作者不明</span>{% endif %}
+          {% with quote = featured, size = "pill" %}{% include "partials/like_button.html" %}{% endwith %}
+        </div>
+      {% else %}
+        <p class="mg-eyebrow">心に残る言葉を探す</p>
+        <h1 class="mg-hero__quote">名言との新しい出会いを。</h1>
+        <p class="mg-hero__meta mg-mt-4">表示できる名言がありません。</p>
+      {% endif %}
     </div>
   </section>
 

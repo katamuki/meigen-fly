@@ -286,10 +286,10 @@ meigen-fly/
 ### フェーズ3: 公開ページ実装
 - [x] 名言一覧/詳細（quotes。3-A、2026-08-25）
 - [x] その他の一覧/詳細（authors, categories, characters, sources, professions, countries。3-B、2026-08-26、レビュー完了）
-- [x] トップ（注目名言は3-Cまでプレースホルダー。3-A、2026-08-25）
-- [ ] ランキング・ランダム
+- [x] トップ（3-Aで基盤、3-Cでランキング連動の注目名言と空snapshot fallbackを実装。2026-08-26）
+- [x] ランキング・ランダム（3-C、2026-08-26）
 - [ ] 検索（HTMXインクリメンタル・D1）
-- [ ] いいね（D9）
+- [x] いいね（D9。3-C、2026-08-26）
 - [ ] SEO（sitemap/robots/構造化データ/canonical）
 - [ ] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + URL契約表に基づく正規化）
 - [ ] OG画像（D5/ADR 018）

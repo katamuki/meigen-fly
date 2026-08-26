@@ -1,7 +1,7 @@
-{# いいねフォーム（HTMXでPOST→フォーム自身を差し替え。JS無効時は通常POSTで成立）
+{# いいねフォーム（外部JSでPOST→フォーム自身を差し替え）
    経路: POST /api/likes/{quote_id}（ADR 006。数値 quote.id をキーに一意制約 (quote_id, client_uuid)）。
-   client_uuid は localStorage 由来のため、外部静的JSが htmx:configRequest で付与する（ADR 016。js:付き hx-vals は使わない）。
-   JS無効時はフォームの通常POSTで送信され、client_uuid なしのbest-effortとしてサーバが処理する。
+   client_uuid は localStorage 由来のため、外部静的JSがフォームfieldへ付与してfetchで送信する（ADR 016。インラインJSは使わない）。
+   client_uuidはサーバーで厳密検証するため、JS無効時の匿名いいねは成立しない。
    引数: quote{id,likes,liked} / size = 'pill'|'solid'（省略時 素） #}
 <form class="mg-like-form" method="post" action="/api/likes/{{ quote.id }}"
       hx-post="/api/likes/{{ quote.id }}" hx-swap="outerHTML">

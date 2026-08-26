@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% set nav = "random" %}
+{% block title %}ランダム名言｜名言集.com{% endblock %}
+{% block meta_description %}公開中の名言からランダムに20件を紹介します。{% endblock %}
+
+{% block content %}
+  <nav class="mg-breadcrumb" aria-label="パンくず">
+    <a href="/">ホーム</a><span class="sep">/</span><span class="current">ランダム名言</span>
+  </nav>
+  <div class="mg-wide mg-page-body">
+    <div class="mg-section-head mg-section-head--end mg-mb-6">
+      <div>
+        <h1 class="mg-h1">ランダム名言</h1>
+        <p class="mg-hero__meta mg-mt-3">公開中の名言から最大20件を選びました。</p>
+      </div>
+      <a class="mg-chip mg-chip--accent" href="/random">もう一度選ぶ</a>
+    </div>
+    {% if quotes %}
+      <div class="mg-grid-2">
+        {% for quote in quotes %}{% include "partials/quote_card.html" %}{% endfor %}
+      </div>
+    {% else %}
+      <p class="mg-empty">表示できる名言がありません。</p>
+    {% endif %}
+  </div>
+{% endblock %}

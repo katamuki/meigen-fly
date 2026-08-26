@@ -3,6 +3,8 @@ from urllib.parse import urlsplit
 
 DEFAULT_DATABASE_URL = "sqlite:///data/app.db"
 DEFAULT_PUBLIC_ORIGIN = "http://localhost:8000"
+DEFAULT_LIKE_RATE_LIMIT_REQUESTS = 10
+DEFAULT_LIKE_RATE_LIMIT_WINDOW_SECONDS = 10.0
 
 
 def get_database_url() -> str:
@@ -33,8 +35,8 @@ def normalize_authority(authority: str) -> str:
     return f"{host}:{port}" if port is not None else host
 
 
-def get_public_authority() -> str:
-    """Return the one Host authority allowed for the public origin."""
+def get_public_origin() -> str:
+    """Return the normalized HTTP(S) origin used by public requests."""
     public_origin = os.getenv("PUBLIC_ORIGIN", DEFAULT_PUBLIC_ORIGIN)
     parsed = urlsplit(public_origin)
     if (
@@ -45,4 +47,25 @@ def get_public_authority() -> str:
         or parsed.fragment
     ):
         raise ValueError("PUBLIC_ORIGIN must be an HTTP(S) origin")
-    return normalize_authority(parsed.netloc)
+    return f"{parsed.scheme}://{normalize_authority(parsed.netloc)}"
+
+
+def get_public_authority() -> str:
+    """Return the one Host authority allowed for the public origin."""
+    return urlsplit(get_public_origin()).netloc
+
+
+def get_like_rate_limit() -> tuple[int, float]:
+    """Return the small, likes-only in-process rate limit."""
+    requests = int(
+        os.getenv("LIKE_RATE_LIMIT_REQUESTS", DEFAULT_LIKE_RATE_LIMIT_REQUESTS)
+    )
+    window_seconds = float(
+        os.getenv(
+            "LIKE_RATE_LIMIT_WINDOW_SECONDS",
+            DEFAULT_LIKE_RATE_LIMIT_WINDOW_SECONDS,
+        )
+    )
+    if requests < 1 or window_seconds <= 0:
+        raise ValueError("like rate limit values must be positive")
+    return requests, window_seconds

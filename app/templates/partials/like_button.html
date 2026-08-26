@@ -1,4 +1,10 @@
-<span class="mg-like" aria-label="いいね数">
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"></path></svg>
-  {{ quote.likes|comma }}
-</span>
+{% set like_size = size|default("") %}
+<form class="mg-like-form" method="post" action="/api/likes/{{ quote.id }}{% if like_size %}?size={{ like_size }}{% endif %}">
+  {% if client_uuid|default(false) %}<input type="hidden" name="client_uuid" value="{{ client_uuid }}">{% endif %}
+  <button class="mg-like{% if like_size == 'pill' %} mg-like--pill{% elif like_size == 'solid' %} mg-like--solid{% endif %}{% if liked|default(false) %} is-liked{% endif %}"
+          type="submit" aria-pressed="{{ 'true' if liked|default(false) else 'false' }}" aria-label="いいね"
+          data-like-count="{{ quote.likes }}">
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"></path></svg>
+    {% if like_size == "solid" %}いいね <span class="count">{{ quote.likes|comma }}</span>{% else %}{{ quote.likes|comma }}{% endif %}
+  </button>
+</form>

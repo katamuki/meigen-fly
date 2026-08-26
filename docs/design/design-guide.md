@@ -92,7 +92,7 @@ Light/Dark の全コンポーネント一覧は `proposal-b/preview.html`、実�
 - **CSP / インラインコード**（[ADR 016](../decisions/016-csp-htmx-rules.md)）: CSSは外部ファイルのみ。テンプレートに `style` 属性を置かない（余白はユーティリティクラス）。実行可能なインラインJS・DOM event属性・`javascript:` は使わず外部静的JSへ。
 - **HTMX**（[ADR 016](../decisions/016-csp-htmx-rules.md)）: バージョン固定で `/static/` 配信。`allowEval=false` / `allowScriptTags=false` / `selfRequestsOnly=true`。イベントは外部JSの `addEventListener`。
   - **検索**: `hx-get="/search/partial" hx-trigger="keyup changed delay:500ms, search"` で `#search-results` を差し替え。JS無効時は `/search` への通常GETで成立（[ADR 015](../decisions/015-search-rate-limits.md)）。
-  - **いいね**: `<form method="post" action="/api/likes/{id}">` を `hx-post` + `hx-swap="outerHTML"` でフォーム自身を差し替え。JS無効時はフォームの通常POSTで成立（`client_uuid` なしの best-effort）。`client_uuid` は外部JSが `htmx:configRequest` で付与（[ADR 006](../decisions/006-like-count-cache-strategy.md)）。
+  - **いいね**: `<form method="post" action="/api/likes/{id}">` を外部JSからPOSTし、成功HTMLでフォーム自身を差し替える。`client_uuid` はlocalStorageで管理する外部JSが付与し、サーバーはUUIDを厳密検証する。JS無効時はUUIDを生成できないため、匿名いいねは送信できない（[ADR 006](../decisions/006-like-count-cache-strategy.md)）。
 - **フォント**: 日本語Webフォントは重いため、**system-ui系スタックを前提**（`--font-sans` / `--font-serif`）。見出し・引用は端末搭載の明朝（`Hiragino Mincho ProN` / `Yu Mincho` 等）にフォールバック。`Noto Serif JP` はスタック末尾に置くのみで、本体では読み込まない。
 - **アニメーション**: Cloudflareエッジキャッシュ前提の静的HTML。凝った動きより表示速度・可読性を優先。
 - **OG画像**: サイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとする。名言は `/quotes/{slug または q{id}}/og.png`、著者は `/authors/{slug}/og.png` で、PillowによりCloudflareキャッシュミス時に1200×630のPNGを生成する。`proposal-b/og/og.html` は本番でHTML画像化するテンプレートではなく、Pillow実装の視覚仕様・プレビューとして使う。名言は表示幅20/40/80の3段階、80超は`…`で省略し、本番コンテナのローカル`Noto Serif CJK JP`で描画する。詳細は [ADR 018](../decisions/018-og-image-generation.md)を正本とする。

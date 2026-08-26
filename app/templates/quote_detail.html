@@ -36,7 +36,7 @@
       {% endif %}
 
       <div class="mg-actions">
-        {% include "partials/like_button.html" %}
+        {% with size = "solid" %}{% include "partials/like_button.html" %}{% endwith %}
       </div>
 
       {% if quote.categories %}

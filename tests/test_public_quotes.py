@@ -1,9 +1,11 @@
+import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
 
 from app.db import create_db_engine, get_connection, metadata
 from app.instants import format_instant
@@ -11,22 +13,34 @@ from app.main import app
 from app.schema import (
     author_country,
     author_professions,
+    author_rankings,
     authors,
     categories,
+    category_rankings,
     characters,
     countries,
     professions,
     quote_categories,
+    quote_likes,
+    quote_ranking_scores,
     quotes,
     source_type_assignments,
     source_types,
     sources,
 )
+from app.services.likes import LikeRateLimiter, like_rate_limiter
 from app.services.quotes import SQLITE_MAX_INTEGER
+
+LIKE_HEADERS = {
+    "Origin": "http://localhost:8000",
+    "Sec-Fetch-Site": "same-origin",
+    "CF-Connecting-IP": "203.0.113.10",
+}
 
 
 @pytest.fixture
 def public_client(tmp_path: Path) -> Iterator[TestClient]:
+    like_rate_limiter.reset()
     test_engine = create_db_engine(f"sqlite:///{tmp_path / 'public.db'}")
     metadata.create_all(test_engine)
     first = format_instant(datetime(2026, 1, 1, tzinfo=UTC))
@@ -254,6 +268,7 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "source_id": 50,
                     "character_id": 60,
                     "enable": 1,
+                    "legacy_vote_count": 4,
                     "created_at": first,
                     "updated_at": first,
                 },
@@ -267,6 +282,7 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "source_id": None,
                     "character_id": None,
                     "enable": 1,
+                    "legacy_vote_count": 3,
                     "created_at": second,
                     "updated_at": second,
                 },
@@ -280,6 +296,7 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                     "source_id": 50,
                     "character_id": 60,
                     "enable": 0,
+                    "legacy_vote_count": 0,
                     "created_at": first,
                     "updated_at": first,
                 },
@@ -294,6 +311,7 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
                         "source_id": None,
                         "character_id": None,
                         "enable": 1,
+                        "legacy_vote_count": 0,
                         "created_at": first,
                         "updated_at": first,
                     }
@@ -312,13 +330,16 @@ def public_client(tmp_path: Path) -> Iterator[TestClient]:
         )
 
     def override_connection() -> Iterator:
-        with test_engine.connect() as connection:
+        with test_engine.begin() as connection:
             yield connection
 
     app.dependency_overrides[get_connection] = override_connection
+    app.state.public_test_engine = test_engine
     with TestClient(app, base_url="http://localhost:8000") as client:
         yield client
     app.dependency_overrides.clear()
+    del app.state.public_test_engine
+    like_rate_limiter.reset()
     test_engine.dispose()
 
 
@@ -413,7 +434,10 @@ def test_home_and_quote_pages_use_public_cache_headers(
     detail = public_client.get("/quotes/q2")
 
     assert home.status_code == 200
-    assert "注目名言はランキング連動の準備中です" in home.text
+    assert "新着名言から" in home.text
+    assert 'href="/quotes/q2"' in home.text
+    assert home.text.count("?size=pill") == 1
+    assert detail.text.count("?size=solid") == 1
     assert home.headers["cache-control"] == "public, s-maxage=300, max-age=60"
     for response in (listing, detail):
         assert response.headers["cache-control"] == "public, s-maxage=600, max-age=60"
@@ -426,10 +450,15 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
     assert (
         '<script src="http://localhost:8000/static/theme.caadaed0.js">' in response.text
     )
+    assert (
+        '<script src="http://localhost:8000/static/likes.313469f4.js" defer>'
+        in response.text
+    )
     assert "<script>" not in response.text
 
     for path in (
         "/static/theme.caadaed0.js",
+        "/static/likes.313469f4.js",
         "/static/tokens.74bc89e2.css",
         "/static/components.fae1678a.css",
     ):
@@ -437,10 +466,343 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
         assert asset.status_code == 200
         assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
 
+    like_script = public_client.get("/static/likes.313469f4.js").text
+    assert "window.localStorage" in like_script
+    assert "window.crypto.randomUUID" in like_script
+    assert 'method: "POST"' in like_script
+
     mobile_css = public_client.get("/static/components.fae1678a.css").text
     assert ".mg-header__spacer { display: none; }" in mobile_css
     assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
     assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css
+
+
+def test_random_returns_at_most_twenty_public_quotes_without_cache(
+    public_client: TestClient,
+) -> None:
+    response = public_client.get("/random")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.text.count('data-quote-id="') == 20
+    assert "非公開三" not in response.text
+
+
+def test_like_uuid_validation_and_request_guards(public_client: TestClient) -> None:
+    assert public_client.get("/api/likes/1").status_code == 405
+
+    for invalid_uuid in (
+        "not-a-uuid",
+        "550E8400-E29B-41D4-A716-446655440000",
+        "{550e8400-e29b-41d4-a716-446655440000}",
+        "550e8400-e29b-41d4-a716-446655440000 ",
+    ):
+        response = public_client.post(
+            "/api/likes/1",
+            data={"client_uuid": invalid_uuid},
+            headers=LIKE_HEADERS,
+        )
+        assert response.status_code == 422
+
+    assert (
+        public_client.post(
+            "/api/likes/1",
+            content="client_uuid=550e8400-e29b-41d4-a716-446655440000",
+            headers={
+                **LIKE_HEADERS,
+                "Origin": "https://attacker.invalid",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        ).status_code
+        == 403
+    )
+    oversized = public_client.post(
+        "/api/likes/1",
+        content="client_uuid=" + ("a" * 300),
+        headers={**LIKE_HEADERS, "Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert oversized.status_code == 413
+    assert (
+        public_client.post(
+            "/api/likes/1",
+            json={"client_uuid": "550e8400-e29b-41d4-a716-446655440000"},
+            headers=LIKE_HEADERS,
+        ).status_code
+        == 415
+    )
+    assert (
+        public_client.post(
+            "/api/likes/1",
+            data={"client_uuid": "550e8400-e29b-41d4-a716-446655440000"},
+            headers={**LIKE_HEADERS, "Sec-Fetch-Site": "cross-site"},
+        ).status_code
+        == 403
+    )
+
+
+def test_like_first_insert_is_idempotent_and_returns_combined_count(
+    public_client: TestClient,
+) -> None:
+    client_uuid = "550e8400-e29b-41d4-a716-446655440000"
+
+    first = public_client.post(
+        "/api/likes/1", data={"client_uuid": client_uuid}, headers=LIKE_HEADERS
+    )
+    duplicate = public_client.post(
+        "/api/likes/1", data={"client_uuid": client_uuid}, headers=LIKE_HEADERS
+    )
+
+    assert first.status_code == duplicate.status_code == 200
+    assert first.headers["cache-control"] == "private, no-store"
+    assert 'data-like-count="5"' in first.text
+    assert 'data-like-count="5"' in duplicate.text
+    with public_client.app.state.public_test_engine.connect() as connection:
+        rows = connection.execute(
+            quote_likes.select().where(quote_likes.c.quote_id == 1)
+        ).all()
+        assert len(rows) == 1
+
+
+def test_like_insert_race_is_an_idempotent_success(public_client: TestClient) -> None:
+    engine = public_client.app.state.public_test_engine
+    original_override = app.dependency_overrides[get_connection]
+
+    class RaceConnection:
+        def __init__(self, connection) -> None:
+            self.connection = connection
+            self.raced = False
+
+        def execute(self, statement, *args, **kwargs):
+            if (
+                not self.raced
+                and getattr(statement, "is_insert", False)
+                and statement.table.name == "quote_likes"
+            ):
+                self.raced = True
+                self.connection.execute(statement, *args, **kwargs)
+                raise IntegrityError(
+                    "INSERT",
+                    {},
+                    sqlite3.IntegrityError("UNIQUE constraint failed"),
+                )
+            return self.connection.execute(statement, *args, **kwargs)
+
+    def race_override() -> Iterator:
+        with engine.begin() as connection:
+            yield RaceConnection(connection)
+
+    app.dependency_overrides[get_connection] = race_override
+    try:
+        response = public_client.post(
+            "/api/likes/1",
+            data={"client_uuid": "00000000-0000-4000-8000-000000000123"},
+            headers=LIKE_HEADERS,
+        )
+    finally:
+        app.dependency_overrides[get_connection] = original_override
+
+    assert response.status_code == 200
+    assert 'data-like-count="5"' in response.text
+    with engine.connect() as connection:
+        rows = connection.execute(
+            quote_likes.select().where(quote_likes.c.quote_id == 1)
+        ).all()
+        assert len(rows) == 1
+
+
+def test_display_count_adds_legacy_votes_and_only_valid_likes(
+    public_client: TestClient,
+) -> None:
+    first = format_instant(datetime(2026, 1, 1, tzinfo=UTC))
+    with public_client.app.state.public_test_engine.begin() as connection:
+        connection.execute(
+            quote_likes.insert(),
+            [
+                {
+                    "quote_id": 2,
+                    "client_uuid": "00000000-0000-4000-8000-000000000001",
+                    "created_at": first,
+                    "is_valid": 1,
+                },
+                {
+                    "quote_id": 2,
+                    "client_uuid": "00000000-0000-4000-8000-000000000002",
+                    "created_at": first,
+                    "is_valid": 0,
+                },
+            ],
+        )
+
+    response = public_client.get("/quotes/q2")
+    assert response.status_code == 200
+    assert 'data-like-count="4"' in response.text
+
+
+def test_like_rejects_private_and_missing_quotes(public_client: TestClient) -> None:
+    for quote_id in (3, 999):
+        response = public_client.post(
+            f"/api/likes/{quote_id}",
+            data={"client_uuid": f"00000000-0000-4000-8000-{quote_id:012d}"},
+            headers=LIKE_HEADERS,
+        )
+        assert response.status_code == 404
+
+
+def test_like_rate_limit_returns_retry_after(public_client: TestClient) -> None:
+    for sequence in range(like_rate_limiter.max_requests):
+        response = public_client.post(
+            "/api/likes/1",
+            data={"client_uuid": f"00000000-0000-4000-8000-{sequence:012d}"},
+            headers=LIKE_HEADERS,
+        )
+        assert response.status_code == 200
+
+    limited = public_client.post(
+        "/api/likes/1",
+        data={"client_uuid": "00000000-0000-4000-8000-999999999999"},
+        headers=LIKE_HEADERS,
+    )
+    assert limited.status_code == 429
+    assert int(limited.headers["retry-after"]) >= 1
+
+
+def test_like_rate_limiter_bounds_source_keys() -> None:
+    limiter = LikeRateLimiter(max_requests=1, window_seconds=10, max_sources=2)
+
+    assert limiter.allow("192.0.2.1", now=0)[0]
+    assert limiter.allow("192.0.2.2", now=0)[0]
+    assert limiter.allow("192.0.2.3", now=20)[0]
+    assert limiter.tracked_source_count == 2
+
+
+def test_empty_ranking_snapshots_render_and_home_falls_back(
+    public_client: TestClient,
+) -> None:
+    for path in ("/ranking", "/ranking/authors", "/ranking/categories"):
+        response = public_client.get(path)
+        assert response.status_code == 200
+        assert "ランキングはまだ集計されていません" in response.text
+
+    home = public_client.get("/")
+    assert home.status_code == 200
+    assert "新着名言から" in home.text
+    assert 'href="/quotes/q2"' in home.text
+
+
+def test_snapshot_rankings_use_score_then_stable_id_and_drive_home_feature(
+    public_client: TestClient,
+) -> None:
+    refreshed_at = format_instant(datetime(2026, 1, 3, tzinfo=UTC))
+    engine = public_client.app.state.public_test_engine
+    with engine.begin() as connection:
+        connection.execute(
+            quote_ranking_scores.insert(),
+            [
+                {
+                    "quote_id": 2,
+                    "score_total": 5,
+                    "likes_total": 3,
+                    "likes_7d": 0,
+                    "likes_1d": 0,
+                    "refreshed_at": refreshed_at,
+                },
+                {
+                    "quote_id": 1,
+                    "score_total": 5,
+                    "likes_total": 4,
+                    "likes_7d": 0,
+                    "likes_1d": 0,
+                    "refreshed_at": refreshed_at,
+                },
+                {
+                    "quote_id": 10,
+                    "score_total": 9,
+                    "likes_total": 0,
+                    "likes_7d": 0,
+                    "likes_1d": 0,
+                    "refreshed_at": refreshed_at,
+                },
+            ],
+        )
+        connection.execute(
+            author_rankings.insert(),
+            [
+                {
+                    "author_id": 1,
+                    "rank": 1,
+                    "score": 2,
+                    "total_score": 2,
+                    "avg_score": 2,
+                    "quote_count": 1,
+                    "refreshed_at": refreshed_at,
+                },
+                {
+                    "author_id": 2,
+                    "rank": 2,
+                    "score": 8,
+                    "total_score": 8,
+                    "avg_score": 8,
+                    "quote_count": 21,
+                    "refreshed_at": refreshed_at,
+                },
+            ],
+        )
+        connection.execute(
+            category_rankings.insert(),
+            [
+                {
+                    "category_id": 11,
+                    "rank": 1,
+                    "score": 7,
+                    "total_score": 7,
+                    "avg_score": 7,
+                    "adjusted_score": 7,
+                    "quote_count": 1,
+                    "refreshed_at": refreshed_at,
+                },
+                {
+                    "category_id": 10,
+                    "rank": 2,
+                    "score": 7,
+                    "total_score": 7,
+                    "avg_score": 7,
+                    "adjusted_score": 7,
+                    "quote_count": 2,
+                    "refreshed_at": refreshed_at,
+                },
+                {
+                    "category_id": 13,
+                    "rank": 3,
+                    "score": 9,
+                    "total_score": 9,
+                    "avg_score": 9,
+                    "adjusted_score": 9,
+                    "quote_count": 0,
+                    "refreshed_at": refreshed_at,
+                },
+            ],
+        )
+
+    quote_page = public_client.get("/ranking")
+    author_page = public_client.get("/ranking/authors")
+    category_page = public_client.get("/ranking/categories")
+    assert (
+        quote_page.text.index('data-ranking-id="10"')
+        < quote_page.text.index('data-ranking-id="1"')
+        < quote_page.text.index('data-ranking-id="2"')
+    )
+    assert author_page.text.index('data-ranking-id="2"') < author_page.text.index(
+        'data-ranking-id="1"'
+    )
+    assert (
+        category_page.text.index('data-ranking-id="13"')
+        < category_page.text.index('data-ranking-id="10"')
+        < category_page.text.index('data-ranking-id="11"')
+    )
+
+    home = public_client.get("/")
+    assert "ランキング注目名言" in home.text
+    assert 'href="/quotes/q10"' in home.text
 
 
 def test_authors_work_with_empty_ranking_snapshot_and_public_counts(

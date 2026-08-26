@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% set nav = "ranking" %}
+{% set tab_labels = {"quotes": "名言", "authors": "著者", "categories": "カテゴリ"} %}
+{% block title %}{{ tab_labels[tab] }}ランキング｜名言集.com{% endblock %}
+
+{% block content %}
+  <nav class="mg-breadcrumb" aria-label="パンくず">
+    <a href="/">ホーム</a><span class="sep">/</span><span class="current">ランキング</span>
+  </nav>
+  <div class="mg-wide mg-page-body">
+    <div class="mg-section-head mg-section-head--end mg-mb-6">
+      <h1 class="mg-h1">{{ tab_labels[tab] }}ランキング</h1>
+      <div class="mg-chips" aria-label="ランキング種別">
+        {% for key, label in tab_labels.items() %}
+          <a class="mg-chip{% if tab == key %} mg-chip--sort-active{% endif %}" href="/ranking/{{ key }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if items %}
+      <div class="mg-rank">
+        {% for item in items %}
+          <div class="mg-rank-row" data-ranking-id="{{ item.id }}">
+            {% if loop.index <= 3 %}<span class="mg-medal mg-medal--{{ loop.index }}">{{ loop.index }}</span>{% else %}<span class="mg-rank-num">{{ loop.index }}</span>{% endif %}
+            <div class="mg-rank-row__q">
+              {% if tab == "quotes" %}
+                <a class="q" href="{{ item.path }}" lang="{{ item.display_language }}">{{ item.display_text }}</a>
+                <div class="by">{% if item.author %}{{ item.author.name }}{% else %}作者不明{% endif %}</div>
+              {% elif tab == "authors" %}
+                <a class="q" href="/authors/{{ item.slug }}">{{ item.name }}</a>
+                <div class="by">公開名言 {{ item.quote_count|comma }}件</div>
+              {% else %}
+                <a class="q" href="/categories/{{ item.slug }}">{{ item.name }}</a>
+                <div class="by">公開名言 {{ item.quote_count|comma }}件</div>
+              {% endif %}
+            </div>
+            {% if tab == "quotes" %}{% set quote = item %}{% include "partials/like_button.html" %}{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="mg-empty">ランキングはまだ集計されていません。</p>
+    {% endif %}
+  </div>
+{% endblock %}

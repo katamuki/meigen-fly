@@ -1,14 +1,17 @@
 """Public pages."""
 
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.engine import Connection
+from starlette.concurrency import run_in_threadpool
 
+from app.config import get_public_origin
 from app.db import get_connection
 from app.services.entities import (
     get_author,
@@ -25,13 +28,23 @@ from app.services.entities import (
     list_source_types,
     list_sources,
 )
+from app.services.likes import (
+    LikeWriteUnavailableError,
+    QuoteNotLikeableError,
+    like_rate_limiter,
+    record_like,
+    validate_client_uuid,
+)
 from app.services.quotes import (
     SQLITE_MAX_INTEGER,
     get_quote,
     homepage_data,
     list_quotes,
+    list_ranked_quotes,
     parse_qid,
+    random_quotes,
 )
+from app.services.rankings import list_author_rankings, list_category_rankings
 
 APP_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=APP_DIR / "templates")
@@ -182,6 +195,124 @@ def home(request: Request, connection: ConnectionDependency) -> HTMLResponse:
         request=request,
         name="home.html",
         context=homepage_data(connection),
+    )
+
+
+@router.get("/random", response_class=HTMLResponse)
+def random_page(request: Request, connection: ConnectionDependency) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="random.html",
+        context={"quotes": random_quotes(connection)},
+    )
+
+
+def _ranking_response(
+    request: Request, connection: Connection, tab: str
+) -> HTMLResponse:
+    if tab == "quotes":
+        items = list_ranked_quotes(connection)
+    elif tab == "authors":
+        items = list_author_rankings(connection)
+    elif tab == "categories":
+        items = list_category_rankings(connection)
+    else:
+        raise HTTPException(status_code=404)
+    return templates.TemplateResponse(
+        request=request,
+        name="ranking.html",
+        context={"tab": tab, "items": items},
+    )
+
+
+@router.get("/ranking", response_class=HTMLResponse)
+def ranking_index(request: Request, connection: ConnectionDependency) -> HTMLResponse:
+    return _ranking_response(request, connection, "quotes")
+
+
+@router.get("/ranking/{tab}", response_class=HTMLResponse)
+def ranking_tab(
+    request: Request, tab: str, connection: ConnectionDependency
+) -> HTMLResponse:
+    return _ranking_response(request, connection, tab)
+
+
+def _validate_like_headers(request: Request) -> None:
+    if request.headers.get("origin") != get_public_origin():
+        raise HTTPException(status_code=403, detail="invalid origin")
+    fetch_site = request.headers.get("sec-fetch-site")
+    if fetch_site is not None and fetch_site != "same-origin":
+        raise HTTPException(status_code=403, detail="invalid fetch metadata")
+    media_type = request.headers.get("content-type", "").split(";", 1)[0].strip()
+    if media_type != "application/x-www-form-urlencoded":
+        raise HTTPException(status_code=415, detail="unsupported content type")
+
+
+async def _like_client_uuid(request: Request) -> str:
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > 256:
+            raise HTTPException(status_code=413, detail="request body too large")
+        body.extend(chunk)
+    try:
+        fields = parse_qs(
+            bytes(body).decode("ascii"),
+            keep_blank_values=True,
+            strict_parsing=True,
+            max_num_fields=2,
+        )
+    except (UnicodeDecodeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail="invalid form body") from error
+    if set(fields) != {"client_uuid"} or len(fields["client_uuid"]) != 1:
+        raise HTTPException(status_code=422, detail="client_uuid is required")
+    try:
+        return validate_client_uuid(fields["client_uuid"][0])
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+def _like_source_ip(request: Request) -> str:
+    forwarded = request.headers.get("cf-connecting-ip")
+    if forwarded is not None:
+        try:
+            return str(ip_address(forwarded))
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="invalid source IP") from error
+    return request.client.host if request.client is not None else "unknown"
+
+
+@router.post("/api/likes/{quote_id}", response_class=HTMLResponse)
+async def like_quote(
+    request: Request, quote_id: int, connection: ConnectionDependency
+) -> HTMLResponse:
+    if quote_id < 1 or quote_id > SQLITE_MAX_INTEGER:
+        raise HTTPException(status_code=404)
+    _validate_like_headers(request)
+    allowed, retry_after = like_rate_limiter.allow(_like_source_ip(request))
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="too many like requests",
+            headers={"Retry-After": str(retry_after)},
+        )
+    client_uuid = await _like_client_uuid(request)
+    try:
+        like_count = await run_in_threadpool(
+            record_like, connection, quote_id, client_uuid
+        )
+    except QuoteNotLikeableError as error:
+        raise HTTPException(status_code=404) from error
+    except LikeWriteUnavailableError as error:
+        raise HTTPException(status_code=503, detail="like write unavailable") from error
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/like_button.html",
+        context={
+            "quote": {"id": quote_id, "likes": like_count},
+            "liked": True,
+            "client_uuid": client_uuid,
+            "size": request.query_params.get("size"),
+        },
     )
 
 

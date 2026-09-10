@@ -45,6 +45,12 @@ from app.services.quotes import (
     random_quotes,
 )
 from app.services.rankings import list_author_rankings, list_category_rankings
+from app.services.search import (
+    normalize_scope,
+    normalize_term,
+    search,
+    search_rate_limiter,
+)
 
 APP_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=APP_DIR / "templates")
@@ -271,7 +277,7 @@ async def _like_client_uuid(request: Request) -> str:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
-def _like_source_ip(request: Request) -> str:
+def _source_ip(request: Request) -> str:
     forwarded = request.headers.get("cf-connecting-ip")
     if forwarded is not None:
         try:
@@ -288,7 +294,7 @@ async def like_quote(
     if quote_id < 1 or quote_id > SQLITE_MAX_INTEGER:
         raise HTTPException(status_code=404)
     _validate_like_headers(request)
-    allowed, retry_after = like_rate_limiter.allow(_like_source_ip(request))
+    allowed, retry_after = like_rate_limiter.allow(_source_ip(request))
     if not allowed:
         raise HTTPException(
             status_code=429,
@@ -313,6 +319,65 @@ async def like_quote(
             "client_uuid": client_uuid,
             "size": request.query_params.get("size"),
         },
+    )
+
+
+SEARCH_HEADERS = {"Vary": "HX-Request"}
+
+
+def _search_response(
+    request: Request,
+    connection: Connection,
+    *,
+    name: str,
+    q: str,
+    scope: str | None,
+) -> HTMLResponse:
+    """Serve the full page and the HTMX fragment from one search (ADR 015).
+
+    `Cache-Control: private, no-store` is applied by the response middleware,
+    which already lists /search and the /search/ prefix.
+    """
+    allowed, retry_after = search_rate_limiter.allow(_source_ip(request))
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="too many search requests",
+            headers={**SEARCH_HEADERS, "Retry-After": str(retry_after)},
+        )
+    return templates.TemplateResponse(
+        request=request,
+        name=name,
+        context=search(
+            connection, term=normalize_term(q), scope=normalize_scope(scope)
+        ),
+        headers=SEARCH_HEADERS,
+    )
+
+
+@router.get("/search", response_class=HTMLResponse)
+def search_page(
+    request: Request,
+    connection: ConnectionDependency,
+    q: str = "",
+    scope: str | None = None,
+) -> HTMLResponse:
+    return _search_response(request, connection, name="search.html", q=q, scope=scope)
+
+
+@router.get("/search/partial", response_class=HTMLResponse)
+def search_fragment(
+    request: Request,
+    connection: ConnectionDependency,
+    q: str = "",
+    scope: str | None = None,
+) -> HTMLResponse:
+    return _search_response(
+        request,
+        connection,
+        name="partials/search_results.html",
+        q=q,
+        scope=scope,
     )
 
 

@@ -28,8 +28,9 @@ from app.schema import (
     source_types,
     sources,
 )
-from app.services.likes import LikeRateLimiter, like_rate_limiter
+from app.services.likes import like_rate_limiter
 from app.services.quotes import SQLITE_MAX_INTEGER
+from app.services.rate_limit import RateLimiter
 
 LIKE_HEADERS = {
     "Origin": "http://localhost:8000",
@@ -666,8 +667,8 @@ def test_like_rate_limit_returns_retry_after(public_client: TestClient) -> None:
     assert int(limited.headers["retry-after"]) >= 1
 
 
-def test_like_rate_limiter_bounds_source_keys() -> None:
-    limiter = LikeRateLimiter(max_requests=1, window_seconds=10, max_sources=2)
+def test_rate_limiter_bounds_source_keys() -> None:
+    limiter = RateLimiter(max_requests=1, window_seconds=10, max_sources=2)
 
     assert limiter.allow("192.0.2.1", now=0)[0]
     assert limiter.allow("192.0.2.2", now=0)[0]

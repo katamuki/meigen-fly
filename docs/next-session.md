@@ -21,7 +21,7 @@
 | 3-A | 共通基盤 + トップ + 名言一覧/詳細 | 完了（2026-08-25） |
 | 3-B | 著者・カテゴリ・出典・登場人物・職業・国の一覧/詳細 | 完了（2026-08-26、レビュー済み） |
 | 3-C | ランダム + いいね + ランキング表示 | 完了（2026-08-26） |
-| 3-D | 検索（HTMXインクリメンタル） | 未着手 |
+| 3-D | 検索（HTMXインクリメンタル） | 完了（2026-09-10） |
 | 3-E | SEO + URL互換リダイレクト + OG画像 | 未着手 |
 
 各回の終わりに: `docs/project-plan.md` のフェーズ3チェックボックスへ反映 → 上の表の「状態」を更新 → コミット。
@@ -31,10 +31,23 @@
 - 3-B実装: `ff78e67`（著者・カテゴリ・出典・登場人物・職業・国の一覧/詳細）
 - レビュー修正: `fe2be76`（著者詳細の生没年表示。`day`/`month`/`year`、紀元前、部分不明に対応）
 - 3-C実装: `/random`、クライアントUUIDによる匿名いいね、3種のsnapshotランキング、トップのランキング連動注目名言と空snapshot fallback
-- 最終検証: `uv run pytest -q` 60件成功、`uv run ruff check .` 成功
+- 3-D実装: `/search` + `/search/partial`、`app/services/search.py`、HTMX 2.0.10の自前配信、`RateLimiter`の共通化
+- 最終検証: `uv run pytest -q` 73件成功、`uv run ruff check .` 成功
 - DBスキーマ変更なし。`data/app.db`のranking snapshotは空のままで正常
 
-**次回は3-D（HTMXインクリメンタル検索）から開始する。**
+**次回は3-E（SEO + URL互換リダイレクト + OG画像）から開始する。**
+
+#### 3-Dで決めた既定値と申し送り
+
+- カテゴリチップは実装しない（ADR 002・§9.6の検索対象外）。チップは「すべて / 名言 / 著者」の3つ
+- 上限は名言50件・著者20件、並びは`ORDER BY id`（§9.6）。チップの件数は`scope`に関わらず全体のヒット数
+- ハイライトは`markupsafe.escape()`→`Markup`で組み立てる`app/services/search.py`の`highlight()`で実装済み。
+  SQLiteの`LIKE`に合わせASCIIのみ大小同一視する（長さが変わる`casefold()`は使わない）
+- 100文字超は切り詰め、不正な`scope`は「すべて」に丸める。HTMX断片でエラーページを出さないため
+- レート制限超過時、断片側は外部JSが待ち時間を案内する。**通常GETの429はFastAPI既定のJSON**のまま。
+  HTMLエラーページは本プロジェクトにまだ無いため、必要なら3-E以降でまとめて用意する
+- HTMXは検索ページだけで読み込む（`base.html`の`{% block extra_head %}`）。バージョン更新時は
+  `app/static/htmx.<sha256先頭8桁>.min.js`を差し替え、`search.html`の参照も更新する
 
 ### 3-A. 共通基盤 + トップ + 名言一覧/詳細
 
@@ -63,7 +76,7 @@
 - トップの注目名言をランキング連動に差し替え（空なら代替表示）
 - テスト: いいねの冪等性・UUID検証・レート制限、randomのno-store
 
-### 3-D. 検索（次回の作業指示）
+### 3-D. 検索
 
 #### 目的
 
@@ -144,7 +157,7 @@ ADR 002（LIKE検索）/ ADR 015（検索UI・レート制限）/ ADR 016（CSP�
 
 上限件数（名言50 / 著者20）、チップ構成（すべて / 名言 / 著者）、ハイライトの有無は上記を既定とする。変更する場合は理由をコミットメッセージへ残す。ADRと矛盾する実装が必要になった場合はADRを正とし、ADR自体を変えるべきと判断したらユーザーへ確認する。
 
-### 3-E. SEO + URL互換リダイレクト + OG画像
+### 3-E. SEO + URL互換リダイレクト + OG画像（次回の作業指示）
 
 - sitemap.xml（第4部§9.8: 公開quotesはslug/qid契約、authors/sources/categoriesは`updated_at`をlastmodに）・robots.txt
 - 構造化データ・canonical・OGP metadata（表示言語resolverを共用）

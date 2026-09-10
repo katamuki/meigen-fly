@@ -5,6 +5,8 @@ DEFAULT_DATABASE_URL = "sqlite:///data/app.db"
 DEFAULT_PUBLIC_ORIGIN = "http://localhost:8000"
 DEFAULT_LIKE_RATE_LIMIT_REQUESTS = 10
 DEFAULT_LIKE_RATE_LIMIT_WINDOW_SECONDS = 10.0
+DEFAULT_SEARCH_RATE_LIMIT_REQUESTS = 30
+DEFAULT_SEARCH_RATE_LIMIT_WINDOW_SECONDS = 10.0
 
 
 def get_database_url() -> str:
@@ -55,17 +57,32 @@ def get_public_authority() -> str:
     return urlsplit(get_public_origin()).netloc
 
 
-def get_like_rate_limit() -> tuple[int, float]:
-    """Return the small, likes-only in-process rate limit."""
-    requests = int(
-        os.getenv("LIKE_RATE_LIMIT_REQUESTS", DEFAULT_LIKE_RATE_LIMIT_REQUESTS)
-    )
+def _rate_limit(
+    prefix: str, default_requests: int, default_window_seconds: float
+) -> tuple[int, float]:
+    """Read one in-process rate limit from its pair of environment variables."""
+    requests = int(os.getenv(f"{prefix}_RATE_LIMIT_REQUESTS", default_requests))
     window_seconds = float(
-        os.getenv(
-            "LIKE_RATE_LIMIT_WINDOW_SECONDS",
-            DEFAULT_LIKE_RATE_LIMIT_WINDOW_SECONDS,
-        )
+        os.getenv(f"{prefix}_RATE_LIMIT_WINDOW_SECONDS", default_window_seconds)
     )
     if requests < 1 or window_seconds <= 0:
-        raise ValueError("like rate limit values must be positive")
+        raise ValueError(f"{prefix.lower()} rate limit values must be positive")
     return requests, window_seconds
+
+
+def get_like_rate_limit() -> tuple[int, float]:
+    """Return the small, likes-only in-process rate limit."""
+    return _rate_limit(
+        "LIKE",
+        DEFAULT_LIKE_RATE_LIMIT_REQUESTS,
+        DEFAULT_LIKE_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+
+def get_search_rate_limit() -> tuple[int, float]:
+    """Return the search-only in-process rate limit (ADR 015)."""
+    return _rate_limit(
+        "SEARCH",
+        DEFAULT_SEARCH_RATE_LIMIT_REQUESTS,
+        DEFAULT_SEARCH_RATE_LIMIT_WINDOW_SECONDS,
+    )

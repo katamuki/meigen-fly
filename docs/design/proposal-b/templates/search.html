@@ -2,16 +2,27 @@
 {% set nav = 'quotes' %}
 {% block title %}「{{ q|default('') }}」の検索結果｜名言集.com{% endblock %}
 {% block meta_robots %}<meta name="robots" content="noindex">{% endblock %}
+{% block extra_head %}
+  {# インラインJS禁止（ADR 016）のため、HTMXの設定はmetaで渡す #}
+  <meta name="htmx-config" content='{"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/search.js" defer></script>
+{% endblock %}
 
 {% block content %}
 <div class="mg-text mg-page-body">
-  <form class="mg-search mg-search--hero" action="/search" method="get" role="search">
+  {# hx-* はフォームに置く。フォームの値（q と scope）がそのまま送られる #}
+  <form class="mg-search mg-search--hero" action="/search" method="get" role="search"
+        hx-get="/search/partial" hx-trigger="keyup changed delay:500ms, search"
+        hx-target="#search-results">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
     <input class="mg-search__input mg-search__input--hero" type="search" name="q" value="{{ q|default('') }}"
-           placeholder="名言・著者・カテゴリを検索" autofocus autocomplete="off"
-           hx-get="/search/partial" hx-trigger="keyup changed delay:500ms, search"
-           hx-target="#search-results" aria-label="検索">
+           placeholder="名言・著者を検索" autofocus autocomplete="off" aria-label="検索">
+    {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
   </form>
+
+  {# レート制限(429)の案内。search.js だけが表示する（自動再試行はしない。ADR 015） #}
+  <p id="search-notice" class="mg-empty" role="status" hidden></p>
 
   {# 結果本体はHTMXで差し替わる領域。初期表示はSSR済み #}
   <div id="search-results">

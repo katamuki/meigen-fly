@@ -1,40 +1,41 @@
-{# 検索結果（HTMX差し替えターゲット。search.html から include、HTMX応答でも単体返却） #}
-{% if q %}
-<div class="mg-chips mg-my-4">
+{# 検索結果（HTMX差し替えターゲット。search.html から include、HTMX応答でも単体返却）
+   チップは検索対象と揃えて「すべて / 名言 / 著者」の3つ。カテゴリ検索はADR 002・§9.6の対象外。
+   ハイライトはサーバー側でescape済みMarkupとして組み立てる（`|safe` を生の値へ使わない。ADR 016）。 #}
+{% if searched %}
+<div class="mg-chips mg-my-4" aria-label="検索対象">
   <a class="mg-chip{% if not scope %} mg-chip--sort-active{% endif %}" href="?q={{ q|urlencode }}">すべて {{ counts.all }}</a>
-  <a class="mg-chip{% if scope == 'quotes' %} mg-chip--sort-active{% endif %}" href="?q={{ q|urlencode }}&scope=quotes">名言 {{ counts.quotes }}</a>
-  <a class="mg-chip{% if scope == 'authors' %} mg-chip--sort-active{% endif %}" href="?q={{ q|urlencode }}&scope=authors">著者 {{ counts.authors }}</a>
-  <a class="mg-chip{% if scope == 'categories' %} mg-chip--sort-active{% endif %}" href="?q={{ q|urlencode }}&scope=categories">カテゴリ {{ counts.categories }}</a>
+  <a class="mg-chip{% if scope == 'quotes' %} mg-chip--sort-active{% endif %}" href="?q={{ q|urlencode }}&amp;scope=quotes">名言 {{ counts.quotes }}</a>
+  <a class="mg-chip{% if scope == 'authors' %} mg-chip--sort-active{% endif %}" href="?q={{ q|urlencode }}&amp;scope=authors">著者 {{ counts.authors }}</a>
 </div>
 
-{% if results.quotes %}
+{% if quotes %}
 <p class="mg-result-label">結果 · 名言</p>
 <div>
-  {% for r in results.quotes %}
-  <a class="mg-result-row" href="/quotes/{{ r.slug or 'q' ~ r.id }}">
+  {% for quote in quotes %}
+  <a class="mg-result-row" href="{{ quote.path }}">
     <div class="mg-result-row__body">
-      <div class="q">{{ r.highlighted|safe }}</div>{# サーバ側で <mark> 挿入済み #}
-      <div class="by">{{ r.author.name }}</div>
+      <div class="q">{{ quote.highlighted }}</div>{# サーバー側で <mark> 挿入済みのMarkup #}
+      <div class="by">{{ quote.author.name }}</div>
     </div>
-    <span class="mg-like"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>{{ r.likes|comma }}</span>
+    <span class="mg-like"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7.5-4.9-10-9.3C.3 8.6 1.7 5 5 5c2 0 3.2 1.2 4 2.4C9.8 6.2 11 5 13 5c3.3 0 4.7 3.6 3 6.7C19.5 16.1 12 21 12 21z"/></svg>{{ quote.likes|comma }}</span>
   </a>
   {% endfor %}
 </div>
 {% endif %}
 
-{% if results.authors %}
+{% if authors %}
 <p class="mg-result-label">結果 · 著者</p>
 <div class="mg-chips">
-  {% for a in results.authors %}
-  <a class="mg-author-chip" href="/authors/{{ a.slug }}">
-    <span class="mg-avatar mg-avatar--sm">{{ a.name[0] }}</span>
-    <span><span class="n">{{ a.name }}</span><span class="m">{{ a.occupation }} · 名言 {{ a.quote_count }}件</span></span>
+  {% for author in authors %}
+  <a class="mg-author-chip" href="/authors/{{ author.slug }}">
+    <span class="mg-avatar mg-avatar--sm">{{ author.name[0] }}</span>
+    <span><span class="n">{{ author.highlighted }}</span><span class="m">{{ author.profession }} · 名言 {{ author.quote_count }}件</span></span>
   </a>
   {% endfor %}
 </div>
 {% endif %}
 
-{% if not results.quotes and not results.authors and not results.categories %}
+{% if not quotes and not authors %}
 <p class="mg-empty">「{{ q }}」に一致する結果は見つかりませんでした。</p>
 {% endif %}
 

@@ -48,6 +48,15 @@
   HTMLエラーページは本プロジェクトにまだ無いため、必要なら3-E以降でまとめて用意する
 - HTMXは検索ページだけで読み込む（`base.html`の`{% block extra_head %}`）。バージョン更新時は
   `app/static/htmx.<sha256先頭8桁>.min.js`を差し替え、`search.html`の参照も更新する
+- **IME中のkeyupは`search.js`がcaptureで`stopPropagation()`し、htmxへ渡さない。**
+  htmxの`changed`修飾子はトリガー評価の時点で入力値を記録するため、`htmx:beforeRequest`で
+  中断するだけでは変換中の値が「送信済み」として残り、同じ値で確定したときに二度と送られない
+  （「かな入力→変換→候補を1秒見て確定」で再現）。`beforeRequest`の中断は、変換開始前に
+  予約済みだったリクエスト向けの保険として残している
+- インクリメンタル検索は`hx-push-url`を使わず、アドレスバーを更新しない（`no-store`・`noindex`の
+  ページであり、チップのhrefがサーバー生成の`q`を持つため導線は成立する）
+- **3-Eのrobots.txtで`/search`を`Disallow`する**こと。`/search/partial`には`noindex`が付かない
+  （metaを持たない断片のため）ので、パスごと除外して揃える
 
 ### 3-A. 共通基盤 + トップ + 名言一覧/詳細
 

@@ -25,11 +25,25 @@
       input.dispatchEvent(new Event("keyup", { bubbles: true }));
     });
 
+    // 変換中のkeyupはhtmxへ渡さない。htmxはトリガー評価の時点で changed 用に
+    // 入力値を記録するため、htmx:beforeRequestで中断するだけでは変換中の値が
+    // 「送信済み」として残り、同じ値で確定したときに二度と送られなくなる。
+    input.addEventListener(
+      "keyup",
+      function (event) {
+        if (composing) {
+          event.stopPropagation();
+        }
+      },
+      true
+    );
+    // composition開始前に予約済みだったリクエストが変換中に発火した場合の保険。
     form.addEventListener("htmx:beforeRequest", function (event) {
       if (composing) {
         event.preventDefault();
       }
     });
+
     form.addEventListener("htmx:afterRequest", function (event) {
       if (!notice) {
         return;

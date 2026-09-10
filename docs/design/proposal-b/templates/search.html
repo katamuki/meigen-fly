@@ -21,6 +21,8 @@
     {% if scope %}<input type="hidden" name="scope" value="{{ scope }}">{% endif %}
   </form>
 
+  {# IME変換中のkeyupは search.js がcaptureで止め、htmxへ渡さない（htmxの changed 修飾子が
+     変換中の値を「送信済み」として記録してしまうため）。確定時に改めてkeyupを発火させる。 #}
   {# レート制限(429)の案内。search.js だけが表示する（自動再試行はしない。ADR 015） #}
   <p id="search-notice" class="mg-empty" role="status" hidden></p>
 

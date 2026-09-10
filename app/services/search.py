@@ -14,7 +14,7 @@ from app.schema import (
     quotes,
     sources,
 )
-from app.services.quotes import _present_quotes, _quote_select
+from app.services.quotes import present_quotes, quote_select
 from app.services.rate_limit import RateLimiter
 
 MAX_TERM_LENGTH = 100
@@ -107,12 +107,12 @@ def _count_authors(connection: Connection, term: str) -> int:
 
 def _search_quotes(connection: Connection, term: str) -> list[dict]:
     rows = connection.execute(
-        _quote_select()
+        quote_select()
         .where(quotes.c.enable == 1, _quote_match(term))
         .order_by(quotes.c.id)
         .limit(QUOTE_RESULT_LIMIT)
     ).mappings()
-    results = _present_quotes(connection, rows)
+    results = present_quotes(connection, rows)
     for quote in results:
         quote["highlighted"] = highlight(quote["display_text"], term)
     return results

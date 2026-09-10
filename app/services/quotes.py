@@ -106,7 +106,8 @@ def _public_conditions(
     return conditions
 
 
-def _quote_select() -> Select:
+def quote_select() -> Select:
+    """Build the public quote projection shared by lists, detail and search."""
     valid_likes = (
         select(func.count())
         .select_from(quote_likes)
@@ -231,7 +232,8 @@ def _load_author_details(connection: Connection, author_ids: Iterable[int]) -> d
     return result
 
 
-def _present_quotes(connection: Connection, rows: Iterable[Mapping]) -> list[dict]:
+def present_quotes(connection: Connection, rows: Iterable[Mapping]) -> list[dict]:
+    """Turn quote rows into the display dicts every public template expects."""
     raw_rows = list(rows)
     category_map = _load_categories(connection, (row["id"] for row in raw_rows))
     author_details = _load_author_details(
@@ -337,7 +339,7 @@ def list_quotes(
             "total_pages": total_pages,
         }
 
-    statement = _quote_select().where(*conditions)
+    statement = quote_select().where(*conditions)
     if latest:
         statement = statement.order_by(quotes.c.created_at.desc(), quotes.c.id.desc())
     else:
@@ -348,7 +350,7 @@ def list_quotes(
         statement.limit(per_page).offset((page - 1) * per_page)
     ).mappings()
     return {
-        "quotes": _present_quotes(connection, rows),
+        "quotes": present_quotes(connection, rows),
         "page": page,
         "per_page": per_page,
         "total": total,
@@ -360,13 +362,13 @@ def get_quote(connection: Connection, identifier: str) -> dict | None:
     qid = parse_qid(identifier)
     condition = quotes.c.id == qid if qid is not None else quotes.c.slug == identifier
     row = (
-        connection.execute(_quote_select().where(quotes.c.enable == 1, condition))
+        connection.execute(quote_select().where(quotes.c.enable == 1, condition))
         .mappings()
         .one_or_none()
     )
     if row is None:
         return None
-    quote = _present_quotes(connection, [row])[0]
+    quote = present_quotes(connection, [row])[0]
 
     if quote["author"] is not None:
         quote["author"]["quote_count"] = connection.execute(
@@ -375,7 +377,7 @@ def get_quote(connection: Connection, identifier: str) -> dict | None:
             .where(quotes.c.enable == 1, quotes.c.author_id == quote["author"]["id"])
         ).scalar_one()
         related_rows = connection.execute(
-            _quote_select()
+            quote_select()
             .where(
                 quotes.c.enable == 1,
                 quotes.c.author_id == quote["author"]["id"],
@@ -387,7 +389,7 @@ def get_quote(connection: Connection, identifier: str) -> dict | None:
             )
             .limit(6)
         ).mappings()
-        quote["related"] = _present_quotes(connection, related_rows)
+        quote["related"] = present_quotes(connection, related_rows)
     else:
         quote["related"] = []
     return quote
@@ -398,12 +400,12 @@ def list_ranked_quotes(
 ) -> list[dict]:
     """Read public quotes in stable score order from the current snapshot."""
     rows = connection.execute(
-        _quote_select()
+        quote_select()
         .where(quotes.c.enable == 1, quote_ranking_scores.c.quote_id.is_not(None))
         .order_by(quote_ranking_scores.c.score_total.desc(), quotes.c.id)
         .limit(limit)
     ).mappings()
-    return _present_quotes(connection, rows)
+    return present_quotes(connection, rows)
 
 
 def random_quotes(connection: Connection) -> list[dict]:
@@ -419,9 +421,9 @@ def random_quotes(connection: Connection) -> list[dict]:
     if not quote_ids:
         return []
     rows = connection.execute(
-        _quote_select().where(quotes.c.id.in_(quote_ids))
+        quote_select().where(quotes.c.id.in_(quote_ids))
     ).mappings()
-    presented = {quote["id"]: quote for quote in _present_quotes(connection, rows)}
+    presented = {quote["id"]: quote for quote in present_quotes(connection, rows)}
     return [presented[quote_id] for quote_id in quote_ids]
 
 

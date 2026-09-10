@@ -57,6 +57,9 @@
 - OG画像のフォントは`app/services/og_image.py:FONT_CANDIDATES`の順に探す。開発機（macOS）は
   ヒラギノ明朝 ProN W6、本番はDebianの`fonts-noto-cjk`。**フェーズ5でDockerfileへ導入し、
   `fc-match`での検査を入れる**こと
+- OG画像のフッター著者名は、落款ブランドとの間に32px空くよう実測幅で切り詰める（`…`）。
+  実データに表示幅28の著者名があり、切り詰めないとブランドへ重なる。全1,785件の公開名言と
+  774人の著者で描画例外ゼロ・重なりゼロを確認済み（1件あたり約47ms）
 - 共通OG画像`app/static/og-default.{hash}.png`はコミット済み。デザインを変えたときだけ
   `uv run python scripts/build_default_og.py`で再生成し、`og_image.py`の`DEFAULT_OG_FILENAME`を更新する
 - JSON-LDは`<script type="application/ld+json">`のインライン。データブロックであり実行可能JSではないため

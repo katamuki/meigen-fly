@@ -73,8 +73,9 @@ def cache_control_for(request: Request, response: Response) -> str:
         return NO_STORE
     if path in NO_STORE_PATHS or path.startswith(NO_STORE_PREFIXES):
         return NO_STORE
-    if 300 <= response.status_code < 400:
+    if response.status_code in {301, 308}:
         # Permanent legacy and canonical redirects are stable enough to cache.
+        # Temporary ones (Starlette's trailing-slash 307) keep the path policy.
         return REDIRECT_CACHE
     if path == "/":
         return ROOT_CACHE

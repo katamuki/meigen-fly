@@ -48,6 +48,7 @@ BRAND_GAP = 18
 BRAND_NAME = "名言集"
 BRAND_SUFFIX = ".com"
 BRAND_SIZE = 30
+FOOT_GAP = 32  # og.html's .og__foot gap, between credit and brand
 
 # Built by scripts/build_default_og.py and served as the fallback OG image.
 DEFAULT_OG_FILENAME = "og-default.c5f86223.png"
@@ -216,15 +217,34 @@ def _canvas() -> tuple[Image.Image, ImageDraw.ImageDraw]:
     return image, draw
 
 
+def _fit(font: ImageFont.FreeTypeFont, text: str, limit: float) -> str:
+    """Shorten one drawn line to ``limit`` pixels, ending with an ellipsis."""
+    if font.getlength(text) <= limit:
+        return text
+    ellipsis_width = font.getlength(ELLIPSIS)
+    kept = ""
+    for char in text:
+        if font.getlength(kept + char) + ellipsis_width > limit:
+            break
+        kept += char
+    return kept.rstrip() + ELLIPSIS
+
+
+def _brand_left() -> float:
+    """Left edge of the brand lockup, which the footer's credit must clear."""
+    brand_font = _font(BRAND_SIZE)
+    lockup = brand_font.getlength(BRAND_NAME) + brand_font.getlength(BRAND_SUFFIX)
+    return CONTENT_RIGHT - lockup - BRAND_GAP - SEAL_SIZE
+
+
 def _draw_brand(draw: ImageDraw.ImageDraw) -> None:
     """Draw the seal-style brand lockup, right aligned in the footer row."""
     brand_font = _font(BRAND_SIZE)
     seal_font = _font(SEAL_TEXT_SIZE)
     name_width = brand_font.getlength(BRAND_NAME)
-    suffix_width = brand_font.getlength(BRAND_SUFFIX)
-    name_left = CONTENT_RIGHT - name_width - suffix_width
-    seal_right = name_left - BRAND_GAP
-    seal_left = seal_right - SEAL_SIZE
+    seal_left = _brand_left()
+    seal_right = seal_left + SEAL_SIZE
+    name_left = seal_right + BRAND_GAP
     seal_top = FOOT_BOTTOM - SEAL_SIZE
 
     draw.rounded_rectangle(
@@ -251,13 +271,18 @@ def _draw_brand(draw: ImageDraw.ImageDraw) -> None:
 
 
 def _draw_credit(draw: ImageDraw.ImageDraw, credit: str, *, prefix: bool) -> None:
-    """Draw the footer's left text, bottom aligned with the brand lockup."""
+    """Draw the footer's left text, bottom aligned with the brand lockup.
+
+    Long names are shortened rather than allowed to run under the brand; a few
+    real authors are wide enough to reach it.
+    """
     font = _font(CREDIT_SIZE)
     x = CONTENT_LEFT
     if prefix:
         draw.text((x, FOOT_BOTTOM), CREDIT_PREFIX, font=font, fill=SUBTLE, anchor="ls")
         x += font.getlength(CREDIT_PREFIX)
-    draw.text((x, FOOT_BOTTOM), credit, font=font, fill=INK, anchor="ls")
+    text = _fit(font, credit, _brand_left() - FOOT_GAP - x)
+    draw.text((x, FOOT_BOTTOM), text, font=font, fill=INK, anchor="ls")
 
 
 def _draw_body(

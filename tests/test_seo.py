@@ -15,9 +15,14 @@ from app.main import app
 from app.schema import authors, categories, quotes, sources
 from app.services import og_image
 from app.services.og_image import (
+    BG,
     DEFAULT_OG_FILENAME,
+    FOOT_BOTTOM,
+    FOOT_GAP,
     HEIGHT,
+    SEAL_SIZE,
     WIDTH,
+    _brand_left,
     display_width,
     normalize_og_text,
     render_author_og,
@@ -292,6 +297,21 @@ def test_page_one_keeps_filters_and_search_keeps_only_the_term() -> None:
     assert resolve_legacy_redirect("/search/quotations", "") is None
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "//evil.example/page/1",
+        "///evil.example/page/1",
+        "/\\evil.example/page/1",
+        "//evil.example/tools",
+    ],
+)
+def test_protocol_relative_paths_never_become_a_redirect_target(path: str) -> None:
+    # Otherwise stripping /page/1 hands back //evil.example, which a browser
+    # resolves against another origin.
+    assert resolve_legacy_redirect(path, "") is None
+
+
 def test_untouched_paths_keep_routing() -> None:
     for path in ("/quotes", "/quotes/page/2", "/authors/natsume-soseki", "/search"):
         assert resolve_legacy_redirect(path, "") is None
@@ -303,6 +323,17 @@ def test_legacy_redirects_are_permanent_and_cacheable(seo_client: TestClient) ->
     assert response.status_code == 301
     assert response.headers["location"] == "/categories/friendship"
     assert response.headers["cache-control"] == "public, s-maxage=86400, max-age=3600"
+
+
+def test_trailing_slash_redirects_keep_the_path_cache_policy(
+    seo_client: TestClient,
+) -> None:
+    # Starlette answers /quotes/ with a temporary 307, which must not inherit
+    # the one-day cache the permanent legacy redirects use.
+    response = seo_client.get("/quotes/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["cache-control"] == "public, s-maxage=600, max-age=60"
 
 
 def test_legacy_quote_ids_reach_the_final_canonical_in_one_hop(
@@ -368,6 +399,25 @@ def test_rendered_cards_are_1200x630_png() -> None:
         image = Image.open(io.BytesIO(png))
         assert image.format == "PNG"
         assert image.size == (WIDTH, HEIGHT)
+
+
+def test_a_long_credit_is_shortened_instead_of_running_under_the_brand() -> None:
+    # A handful of real author names are wide enough to reach the brand lockup.
+    png = render_quote_og(
+        text="人生は素晴らしい。",
+        language="ja",
+        credit="フィリップ・スタンホープ (第4代チェスターフィールド伯爵)",
+    )
+
+    gap = Image.open(io.BytesIO(png)).crop(
+        (
+            int(_brand_left() - FOOT_GAP),
+            FOOT_BOTTOM - SEAL_SIZE,
+            int(_brand_left()),
+            FOOT_BOTTOM,
+        )
+    )
+    assert gap.getcolors() == [(gap.width * gap.height, BG)]
 
 
 def test_og_routes_serve_png_with_the_thirty_day_edge_cache(

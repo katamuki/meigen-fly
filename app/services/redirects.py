@@ -42,6 +42,12 @@ def resolve_legacy_redirect(path: str, query: str) -> str | None:
     ``/quotations/latest/page/1`` reaches ``/quotes/latest`` in one hop instead
     of chaining through ``/quotations/latest``.
     """
+    # A request for //evil.com/page/1 would otherwise derive the target
+    # //evil.com, which a browser reads as another origin. Such a path belongs
+    # to no legacy URL, so refuse it before any rule can build a target from it.
+    if not path.startswith("/") or path.startswith(("//", "/\\")):
+        return None
+
     for prefix, destination in PREFIX_REDIRECTS:
         if path == prefix or path.startswith(f"{prefix}/"):
             return destination

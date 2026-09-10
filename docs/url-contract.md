@@ -91,9 +91,11 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 - 旧`/quotes/{4桁}` は静的に `/quotes/q{id}` へ301していたため、slugがある名言では2 hopになっていた。新実装はDBを引いて最終canonicalへ1 hopで送る。
 - 旧middlewareは `id <= 0` を `/404` へ301していた。新実装は404を直接返す。
 
-## 6. リダイレクトのキャッシュ
+## 6. リダイレクトの安全性とキャッシュ
 
-3xx応答は `public, s-maxage=86400, max-age=3600`（`app/middleware.py`）。ただし `/search`・`/search/` 配下は他の規則より先に `private, no-store` になるため、`/search/quotations` の301はキャッシュされない。
+- `//` または `/\` で始まるパスはどのリダイレクト規則にも掛けず、そのまま routing へ渡す（結果は404）。`//evil.example/page/1` から `//evil.example` という protocol-relative なLocationを組み立てないため。
+- **301・308**の恒久リダイレクトは `public, s-maxage=86400, max-age=3600`（`app/middleware.py`）。Starletteが末尾スラッシュに返す**307は一時リダイレクト**なので、パスごとのキャッシュ方針（例: `/quotes/` なら `public, s-maxage=600, max-age=60`）のままにする。
+- `/search`・`/search/` 配下は他の規則より先に `private, no-store` になるため、`/search/quotations` の301はキャッシュされない。
 
 ## 7. sitemap と robots
 

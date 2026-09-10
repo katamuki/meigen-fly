@@ -8,6 +8,18 @@
     <title>{% block title %}名言集.com{% endblock %}</title>
     <meta name="description" content="{% block meta_description %}約1,800の名言と770人の著者。人生・恋愛・仕事の言葉を探せる名言ポータル。{% endblock %}">
     {% block meta_robots %}{% endblock %}
+    {% set canonical_url = site_origin ~ (canonical_path|default(request.url.path, true)) %}
+    <link rel="canonical" href="{{ canonical_url }}">
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:site_name" content="名言集.com">
+    <meta property="og:locale" content="ja_JP">
+    <meta property="og:title" content="{{ self.title() }}">
+    <meta property="og:description" content="{{ self.meta_description() }}">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:image" content="{% block og_image %}{{ default_og_url }}{% endblock %}">
+    <meta name="twitter:card" content="summary_large_image">
+    {# JSON-LD is a data block, not executable script, so script-src 'self' allows it. #}
+    {% if structured_data %}<script type="application/ld+json">{{ structured_data|tojson }}</script>{% endif %}
     <link rel="stylesheet" href="{{ url_for('static', path='/tokens.74bc89e2.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', path='/components.fae1678a.css') }}">
     {% block extra_head %}{% endblock %}

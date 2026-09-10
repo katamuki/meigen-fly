@@ -2,6 +2,8 @@
 {% set nav = "quotes" %}
 {% block title %}{{ quote.display_text|truncate(32) }}{% if quote.author %} — {{ quote.author.name }}{% endif %}｜名言集.com{% endblock %}
 {% block meta_description %}{{ quote.display_text }}{% if quote.author %}（{{ quote.author.name }}）{% endif %}{% endblock %}
+{% block og_type %}article{% endblock %}
+{% block og_image %}{{ site_origin }}{{ quote.path }}/og.png{% endblock %}
 
 {% block content %}
   <nav class="mg-breadcrumb" aria-label="パンくず">

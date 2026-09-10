@@ -406,7 +406,10 @@ def test_quote_list_pagination_and_latest_order(public_client: TestClient) -> No
     )
     assert 'datetime="2026-01-02T00:00:00+00:00"' in latest.text
     assert public_client.get("/quotes/page/3").status_code == 404
-    assert public_client.get("/quotes/page/1").status_code == 404
+    # ADR 008 normalizes page 1 onto the base path instead of serving it.
+    page_one = public_client.get("/quotes/page/1", follow_redirects=False)
+    assert page_one.status_code == 301
+    assert page_one.headers["location"] == "/quotes"
     assert public_client.get("/quotes/page/02").status_code == 200
     assert public_client.get("/quotes/page/not-a-page").status_code == 404
 

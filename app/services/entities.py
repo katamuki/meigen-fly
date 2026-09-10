@@ -179,6 +179,13 @@ def get_author(connection: Connection, slug: str) -> dict | None:
     return result
 
 
+def get_author_name(connection: Connection, slug: str) -> str | None:
+    """Read just the display name, for the author OG image."""
+    return connection.execute(
+        select(authors.c.name).where(authors.c.slug == slug)
+    ).scalar_one_or_none()
+
+
 def list_categories(connection: Connection) -> list[dict]:
     child = categories.alias("child")
     parent_count = (

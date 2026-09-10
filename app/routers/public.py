@@ -1,20 +1,31 @@
 """Public pages."""
 
+import logging
+import re
+from collections.abc import Callable
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import parse_qs, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.engine import Connection
 from starlette.concurrency import run_in_threadpool
 
 from app.config import get_public_origin
 from app.db import get_connection
+from app.middleware import NO_STORE
 from app.services.entities import (
     get_author,
+    get_author_name,
     get_category,
     get_character,
     get_country,
@@ -35,14 +46,21 @@ from app.services.likes import (
     record_like,
     validate_client_uuid,
 )
+from app.services.og_image import (
+    DEFAULT_OG_FILENAME,
+    render_author_og,
+    render_quote_og,
+)
 from app.services.quotes import (
     SQLITE_MAX_INTEGER,
     get_quote,
+    get_quote_og,
     homepage_data,
     list_quotes,
     list_ranked_quotes,
     parse_qid,
     random_quotes,
+    resolve_quote_path,
 )
 from app.services.rankings import list_author_rankings, list_category_rankings
 from app.services.search import (
@@ -51,10 +69,26 @@ from app.services.search import (
     search,
     search_rate_limiter,
 )
+from app.services.seo import (
+    author_structured_data,
+    quote_structured_data,
+    render_robots,
+    render_sitemap,
+)
+
+logger = logging.getLogger(__name__)
 
 APP_DIR = Path(__file__).resolve().parents[1]
+PUBLIC_ORIGIN = get_public_origin()
+DEFAULT_OG_PATH = APP_DIR / "static" / DEFAULT_OG_FILENAME
+LEGACY_QUOTE_ID = re.compile(r"[0-9]{4}\Z")
+
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.filters["comma"] = lambda value: f"{value:,}"
+templates.env.globals["site_origin"] = PUBLIC_ORIGIN
+templates.env.globals["default_og_url"] = (
+    f"{PUBLIC_ORIGIN}/static/{DEFAULT_OG_FILENAME}"
+)
 
 router = APIRouter()
 ConnectionDependency = Annotated[Connection, Depends(get_connection)]
@@ -90,6 +124,7 @@ def _pagination(base_path: str, result: dict, query: dict[str, int]) -> dict:
     ]
     return {
         "number": current,
+        "canonical": _page_url(base_path, current, query),
         "has_prev": current > 1,
         "has_next": current < total_pages,
         "prev_url": _page_url(base_path, current - 1, query) if current > 1 else None,
@@ -113,6 +148,7 @@ def _query_pagination(base_path: str, result: dict, query: dict[str, object]) ->
     end = min(total_pages, current + 2)
     return {
         "number": current,
+        "canonical": url(current),
         "has_prev": current > 1,
         "has_next": current < total_pages,
         "prev_url": url(current - 1) if current > 1 else None,
@@ -132,11 +168,18 @@ def _render_entity_quotes(
     base_path: str,
     page: int,
     query_pagination: bool = False,
+    canonical_path: str | None = None,
+    structured_data: list[dict] | None = None,
     **filters: int,
 ) -> HTMLResponse:
     result = list_quotes(connection, page=page, **filters)
     if page > 1 and (result["total_pages"] == 0 or page > result["total_pages"]):
         raise HTTPException(status_code=404)
+    pagination = (
+        _query_pagination(base_path, result, {})
+        if query_pagination
+        else _pagination(base_path, result, {})
+    )
     return templates.TemplateResponse(
         request=request,
         name="entity_detail.html",
@@ -144,11 +187,9 @@ def _render_entity_quotes(
             "entity": entity,
             "entity_type": entity_type,
             **result,
-            "pagination": (
-                _query_pagination(base_path, result, {})
-                if query_pagination
-                else _pagination(base_path, result, {})
-            ),
+            "pagination": pagination,
+            "canonical_path": canonical_path or pagination["canonical"],
+            "structured_data": structured_data,
         },
     )
 
@@ -183,13 +224,15 @@ def _render_quote_list(
         if value is not None
     }
     base_path = "/quotes/latest" if latest else "/quotes"
+    pagination = _pagination(base_path, result, query)
     return templates.TemplateResponse(
         request=request,
         name="quote_list.html",
         context={
             **result,
             "latest": latest,
-            "pagination": _pagination(base_path, result, query),
+            "pagination": pagination,
+            "canonical_path": pagination["canonical"],
             "filters_active": bool(query),
         },
     )
@@ -227,7 +270,11 @@ def _ranking_response(
     return templates.TemplateResponse(
         request=request,
         name="ranking.html",
-        context={"tab": tab, "items": items},
+        context={
+            "tab": tab,
+            "items": items,
+            "canonical_path": "/ranking" if tab == "quotes" else f"/ranking/{tab}",
+        },
     )
 
 
@@ -458,6 +505,13 @@ def quote_detail(
     identifier: str,
     connection: ConnectionDependency,
 ) -> HTMLResponse:
+    # The old site sent /quotes/1234 to /quotes/q1234; resolving the ID here
+    # keeps ADR 008's one hop to the final canonical when a slug exists.
+    if LEGACY_QUOTE_ID.fullmatch(identifier):
+        path = resolve_quote_path(connection, int(identifier))
+        if path is None:
+            raise HTTPException(status_code=404)
+        return RedirectResponse(path, status_code=301)
     quote = get_quote(connection, identifier)
     if quote is None:
         raise HTTPException(status_code=404)
@@ -466,7 +520,12 @@ def quote_detail(
     return templates.TemplateResponse(
         request=request,
         name="quote_detail.html",
-        context={"quote": quote, "related": quote["related"]},
+        context={
+            "quote": quote,
+            "related": quote["related"],
+            "canonical_path": quote["path"],
+            "structured_data": quote_structured_data(quote, PUBLIC_ORIGIN),
+        },
     )
 
 
@@ -494,14 +553,16 @@ def _render_authors(
         }.items()
         if value is not None
     }
+    pagination = _query_pagination("/authors", result, query)
     return templates.TemplateResponse(
         request=request,
         name="author_list.html",
         context={
             **result,
+            "canonical_path": pagination["canonical"],
             "professions": list_professions(connection),
             "countries": list_countries(connection),
-            "pagination": _query_pagination("/authors", result, query),
+            "pagination": pagination,
         },
     )
 
@@ -538,15 +599,15 @@ def country_detail(
         authors_result["total_pages"] == 0 or page > authors_result["total_pages"]
     ):
         raise HTTPException(status_code=404)
+    pagination = _query_pagination(f"/authors/places/{slug}", authors_result, {})
     return templates.TemplateResponse(
         request=request,
         name="country_detail.html",
         context={
             "country": country,
             "authors": authors_result["items"],
-            "pagination": _query_pagination(
-                f"/authors/places/{slug}", authors_result, {}
-            ),
+            "canonical_path": pagination["canonical"],
+            "pagination": pagination,
         },
     )
 
@@ -565,6 +626,7 @@ def author_detail(
         entity_type="author",
         base_path=f"/authors/{slug}",
         page=1,
+        structured_data=author_structured_data(author, PUBLIC_ORIGIN),
         author_id=author["id"],
     )
 
@@ -583,6 +645,7 @@ def author_detail_page(
         entity_type="author",
         base_path=f"/authors/{slug}",
         page=_parse_paginated_page(page),
+        structured_data=author_structured_data(author, PUBLIC_ORIGIN),
         author_id=author["id"],
     )
 
@@ -646,17 +709,19 @@ def _render_sources(
     if page > 1 and (result["total_pages"] == 0 or page > result["total_pages"]):
         raise HTTPException(status_code=404)
     query = {"type": source_type} if source_type else {}
+    pagination = _query_pagination("/sources", result, query)
     return templates.TemplateResponse(
         request=request,
         name="master_list.html",
         context={
             **result,
+            "canonical_path": pagination["canonical"],
             "title": "出典から探す",
             "entity_type": "source",
             "base_path": "/sources",
             "source_types": list_source_types(connection),
             "active_source_type": source_type,
-            "pagination": _query_pagination("/sources", result, query),
+            "pagination": pagination,
         },
     )
 
@@ -720,15 +785,17 @@ def characters_index(
     result = list_characters(connection, page=page)
     if page > 1 and (result["total_pages"] == 0 or page > result["total_pages"]):
         raise HTTPException(status_code=404)
+    pagination = _query_pagination("/characters", result, {})
     return templates.TemplateResponse(
         request=request,
         name="master_list.html",
         context={
             **result,
+            "canonical_path": pagination["canonical"],
             "title": "登場人物から探す",
             "entity_type": "character",
             "base_path": "/characters",
-            "pagination": _query_pagination("/characters", result, {}),
+            "pagination": pagination,
         },
     )
 
@@ -802,6 +869,11 @@ def _profession_detail_response(
         base_path=f"/professions/{slug}/quotes",
         page=page,
         query_pagination=True,
+        canonical_path=(
+            f"/professions/{slug}"
+            if page == 1
+            else f"/professions/{slug}/quotes?page={page}"
+        ),
         profession_id=profession["id"],
     )
 
@@ -821,3 +893,66 @@ def profession_quotes(
     page: PageNumber = 1,
 ) -> HTMLResponse:
     return _profession_detail_response(request, connection, slug=slug, page=page)
+
+
+@router.get("/robots.txt", response_class=PlainTextResponse)
+def robots() -> PlainTextResponse:
+    return PlainTextResponse(render_robots(PUBLIC_ORIGIN))
+
+
+@router.get("/sitemap.xml")
+def sitemap(connection: ConnectionDependency) -> Response:
+    return Response(
+        render_sitemap(connection, PUBLIC_ORIGIN),
+        media_type="application/xml; charset=utf-8",
+    )
+
+
+def _og_response(render: Callable[[], bytes]) -> Response:
+    """Return the rendered card, or the shared fallback if drawing fails.
+
+    ADR 018: a failed drawing must not be cached for 30 days, so the fallback
+    keeps its own no-store header, which the response middleware leaves alone.
+    """
+    try:
+        png = render()
+    except Exception:
+        logger.exception("OG image rendering failed")
+        return FileResponse(
+            DEFAULT_OG_PATH,
+            media_type="image/png",
+            headers={"Cache-Control": NO_STORE},
+        )
+    return Response(png, media_type="image/png")
+
+
+@router.get("/quotes/{identifier}/og.png")
+def quote_og_image(identifier: str, connection: ConnectionDependency) -> Response:
+    quote = get_quote_og(connection, identifier)
+    if quote is None:
+        raise HTTPException(status_code=404)
+    return _og_response(lambda: render_quote_og(**quote))
+
+
+@router.get("/authors/{slug}/og.png")
+def author_og_image(slug: str, connection: ConnectionDependency) -> Response:
+    name = get_author_name(connection, slug)
+    if name is None:
+        raise HTTPException(status_code=404)
+    return _og_response(lambda: render_author_og(name=name))
+
+
+@router.get("/quotations/view/{legacy_id}.html")
+def legacy_quote_view(
+    legacy_id: str, connection: ConnectionDependency
+) -> RedirectResponse:
+    """Move the old /quotations/view/{id}.html pages onto today's canonical."""
+    if not legacy_id.isascii() or not legacy_id.isdecimal():
+        raise HTTPException(status_code=404)
+    quote_id = int(legacy_id)
+    if quote_id > SQLITE_MAX_INTEGER:
+        raise HTTPException(status_code=404)
+    path = resolve_quote_path(connection, quote_id)
+    if path is None:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(path, status_code=301)

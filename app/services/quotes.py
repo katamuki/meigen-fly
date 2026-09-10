@@ -358,6 +358,53 @@ def list_quotes(
     }
 
 
+def resolve_quote_path(connection: Connection, quote_id: int) -> str | None:
+    """Return one public quote's canonical path, for the legacy ID redirects."""
+    row = (
+        connection.execute(
+            select(quotes.c.id, quotes.c.slug).where(
+                quotes.c.enable == 1, quotes.c.id == quote_id
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    return None if row is None else quote_path(row)
+
+
+def get_quote_og(connection: Connection, identifier: str) -> dict | None:
+    """Read only what the OG image needs: display text, language and credit."""
+    qid = parse_qid(identifier)
+    condition = quotes.c.id == qid if qid is not None else quotes.c.slug == identifier
+    row = (
+        connection.execute(
+            select(
+                quotes.c.text,
+                quotes.c.text_en,
+                quotes.c.display_language_preference,
+                authors.c.name.label("author_name"),
+                characters.c.name.label("character_name"),
+            )
+            .select_from(
+                quotes.outerjoin(authors, authors.c.id == quotes.c.author_id).outerjoin(
+                    characters, characters.c.id == quotes.c.character_id
+                )
+            )
+            .where(quotes.c.enable == 1, condition)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        return None
+    display = resolve_quote_display(row)
+    return {
+        "text": display.text,
+        "language": display.language,
+        "credit": row["character_name"] or row["author_name"] or "",
+    }
+
+
 def get_quote(connection: Connection, identifier: str) -> dict | None:
     qid = parse_qid(identifier)
     condition = quotes.c.id == qid if qid is not None else quotes.c.slug == identifier

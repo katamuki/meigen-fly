@@ -290,9 +290,9 @@ meigen-fly/
 - [x] ランキング・ランダム（3-C、2026-08-26）
 - [x] 検索（HTMXインクリメンタル・D1。3-D、2026-09-10）
 - [x] いいね（D9。3-C、2026-08-26）
-- [ ] SEO（sitemap/robots/構造化データ/canonical）
-- [ ] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + URL契約表に基づく正規化）
-- [ ] OG画像（D5/ADR 018）
+- [x] SEO（sitemap/robots/構造化データ/canonical。3-E、2026-09-10）
+- [x] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + [URL契約表](url-contract.md)に基づく正規化。3-E、2026-09-10）
+- [x] OG画像（D5/ADR 018。3-E、2026-09-10）
 - [ ] サイト本体完成後、必要な場合だけGA4を別フェーズで導入（通常のpage view、Privacy Policy、同意要件を確認）
 - [ ] サイト本体完成後、必要な場合だけAdSenseを別フェーズで導入（対象route、Privacy Policy、同意要件を確認）
 

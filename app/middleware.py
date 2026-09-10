@@ -2,16 +2,18 @@ from collections.abc import Awaitable, Callable
 
 from starlette.datastructures import Headers
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
+from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import normalize_authority
+from app.services.redirects import resolve_legacy_redirect
 
 NO_STORE = "private, no-store"
 ROOT_CACHE = "public, s-maxage=300, max-age=60"
 AUTHOR_LIST_CACHE = "public, s-maxage=3600, max-age=300"
 AUTHOR_DETAIL_CACHE = "public, s-maxage=86400, max-age=3600"
 OG_IMAGE_CACHE = "public, s-maxage=2592000, max-age=86400"
+REDIRECT_CACHE = "public, s-maxage=86400, max-age=3600"
 
 CACHE_RULES = (
     ("/static/", "public, max-age=31536000, immutable"),
@@ -21,6 +23,8 @@ CACHE_RULES = (
     ("/professions", "public, s-maxage=3600, max-age=600"),
     ("/sources", "public, s-maxage=3600, max-age=600"),
     ("/ranking", "public, s-maxage=600, max-age=60"),
+    ("/sitemap.xml", "public, s-maxage=3600, max-age=600"),
+    ("/robots.txt", "public, s-maxage=86400, max-age=3600"),
     ("/about", "public, s-maxage=604800, max-age=86400"),
     ("/privacy", "public, s-maxage=604800, max-age=86400"),
     ("/terms", "public, s-maxage=604800, max-age=86400"),
@@ -69,6 +73,9 @@ def cache_control_for(request: Request, response: Response) -> str:
         return NO_STORE
     if path in NO_STORE_PATHS or path.startswith(NO_STORE_PREFIXES):
         return NO_STORE
+    if 300 <= response.status_code < 400:
+        # Permanent legacy and canonical redirects are stable enough to cache.
+        return REDIRECT_CACHE
     if path == "/":
         return ROOT_CACHE
     if (
@@ -103,3 +110,15 @@ async def response_headers_middleware(
     if response.headers.get("content-type", "").startswith("text/html"):
         response.headers.setdefault("Content-Security-Policy", CONTENT_SECURITY_POLICY)
     return response
+
+
+async def legacy_redirect_middleware(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Answer the old site's URLs with one permanent redirect (ADR 008)."""
+    if request.method in {"GET", "HEAD"}:
+        target = resolve_legacy_redirect(request.url.path, request.url.query)
+        if target is not None:
+            return RedirectResponse(target, status_code=301)
+    return await call_next(request)

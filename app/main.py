@@ -8,7 +8,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.config import get_public_authority
 from app.db import engine
-from app.middleware import ExactHostMiddleware, response_headers_middleware
+from app.middleware import (
+    ExactHostMiddleware,
+    legacy_redirect_middleware,
+    response_headers_middleware,
+)
 from app.routers.public import router as public_router
 
 APP_DIR = Path(__file__).parent
@@ -19,6 +23,9 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+# Starlette runs the last registered middleware first, so the host check
+# guards everything and legacy redirects still get the shared headers.
+app.middleware("http")(legacy_redirect_middleware)
 app.middleware("http")(response_headers_middleware)
 app.add_middleware(
     ExactHostMiddleware,

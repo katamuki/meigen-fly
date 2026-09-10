@@ -22,7 +22,7 @@
 | 3-B | 著者・カテゴリ・出典・登場人物・職業・国の一覧/詳細 | 完了（2026-08-26、レビュー済み） |
 | 3-C | ランダム + いいね + ランキング表示 | 完了（2026-08-26） |
 | 3-D | 検索（HTMXインクリメンタル） | 完了（2026-09-10） |
-| 3-E | SEO + URL互換リダイレクト + OG画像 | 未着手 |
+| 3-E | SEO + URL互換リダイレクト + OG画像 | 完了（2026-09-10） |
 
 各回の終わりに: `docs/project-plan.md` のフェーズ3チェックボックスへ反映 → 上の表の「状態」を更新 → コミット。
 
@@ -32,10 +32,40 @@
 - レビュー修正: `fe2be76`（著者詳細の生没年表示。`day`/`month`/`year`、紀元前、部分不明に対応）
 - 3-C実装: `/random`、クライアントUUIDによる匿名いいね、3種のsnapshotランキング、トップのランキング連動注目名言と空snapshot fallback
 - 3-D実装: `/search` + `/search/partial`、`app/services/search.py`、HTMX 2.0.10の自前配信、`RateLimiter`の共通化
-- 最終検証: `uv run pytest -q` 73件成功、`uv run ruff check .` 成功
+- 3-E実装: `/sitemap.xml`・`/robots.txt`（`app/services/seo.py`）、canonical/OGP/JSON-LD、
+  旧URLリダイレクト（`app/services/redirects.py` + `legacy_redirect_middleware`）、
+  Pillow製OG画像（`app/services/og_image.py`、`/quotes/{識別子}/og.png`・`/authors/{slug}/og.png`）、
+  [`docs/url-contract.md`](url-contract.md)
+- 最終検証: `uv run pytest -q` 118件成功、`uv run ruff check .` / `ruff format --check .` 成功
 - DBスキーマ変更なし。`data/app.db`のranking snapshotは空のままで正常
 
-**次回は3-E（SEO + URL互換リダイレクト + OG画像）から開始する。**
+**フェーズ3は完了した。次はフェーズ4（管理画面）。本ファイルは冒頭の方針どおり削除してよい。**
+
+#### 3-Eで決めた既定値と申し送り
+
+- canonicalは「現在のパス＋内容を決めるquery（filterと`page`）」。例外は`/ranking/quotes`→`/ranking`と、
+  `/professions/{slug}/quotes`の1ページ目→`/professions/{slug}`。詳細はURL契約表§3
+- `/page/1`の正規化は「末尾が`/page/1`のパスは接頭辞へ301」という1つの規則にまとめた。旧サイトの5本を包含し、
+  旧サイトに無かった`/sources/{slug}/page/1`も同じ扱いになる
+- 行き先が固定ページの接頭辞リダイレクトはqueryを引き継がない（旧Next.jsは引き継いだ）。
+  `/page/1`と`/search/quotations`はqueryを維持する
+- `/quotes/{4桁}`と`/quotations/view/{id}.html`はDBを引いて最終canonicalへ1 hopで送り、
+  該当する公開名言が無ければ301せず404にする（旧実装は301の先で404だった）
+- 3xx応答は`public, s-maxage=86400, max-age=3600`。ただし`/search/`配下は先に`no-store`になる
+- sitemapの対象は§9.8どおり4表。characters/professionsの詳細ページは旧サイトと同様に含めない。
+  静的一覧にはlastmodを付けない（毎日変わる値に意味がないため）
+- OG画像のフォントは`app/services/og_image.py:FONT_CANDIDATES`の順に探す。開発機（macOS）は
+  ヒラギノ明朝 ProN W6、本番はDebianの`fonts-noto-cjk`。**フェーズ5でDockerfileへ導入し、
+  `fc-match`での検査を入れる**こと
+- 共通OG画像`app/static/og-default.{hash}.png`はコミット済み。デザインを変えたときだけ
+  `uv run python scripts/build_default_og.py`で再生成し、`og_image.py`の`DEFAULT_OG_FILENAME`を更新する
+- JSON-LDは`<script type="application/ld+json">`のインライン。データブロックであり実行可能JSではないため
+  ADR 016の`script-src 'self'`に抵触しない
+- **既知の未対応（3-E以前からの挙動、フェーズ4以降で判断）**: 全routeが`@router.get`のみのため
+  HEADリクエストは405を返す（リダイレクトmiddlewareだけはHEADにも301を返す）。
+  外形監視やクローラがHEADを使う場合は`methods=["GET", "HEAD"]`相当の対応が要る
+- **フェーズ5への申し送り**: Cloudflare Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`を
+  キャッシュ対象にする。`meigensyu.com`→`www.meigensyu.com`のhost正規化もCloudflare側
 
 #### 3-Dで決めた既定値と申し送り
 

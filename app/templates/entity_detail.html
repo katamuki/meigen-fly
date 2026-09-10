@@ -2,6 +2,7 @@
 {% if entity_type == "author" %}{% set nav = "authors" %}{% elif entity_type == "category" %}{% set nav = "categories" %}{% endif %}
 {% set label = entity.name if entity.name is defined else entity.title %}
 {% block title %}{{ label }}の名言｜名言集.com{% endblock %}
+{% block og_image %}{% if entity_type == "author" %}{{ site_origin }}/authors/{{ entity.slug }}/og.png{% else %}{{ default_og_url }}{% endif %}{% endblock %}
 {% block content %}
 <nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><span class="current">{{ label }}</span></nav>
 <div class="mg-wide mg-author-profile" data-entity-type="{{ entity_type }}" data-entity-id="{{ entity.id }}" data-quote-count="{{ entity.quote_count }}">

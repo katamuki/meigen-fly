@@ -299,9 +299,26 @@ def test_page_one_keeps_filters_and_search_keeps_only_the_term() -> None:
     assert resolve_legacy_redirect("/search/quotations", "q=%E6%9C%88&p=3") == (
         "/search?q=%E6%9C%88"
     )
-    assert resolve_legacy_redirect("/search/quotations/", "q=love") == "/search?q=love"
     # Without a term the old site had no page there either.
     assert resolve_legacy_redirect("/search/quotations", "") is None
+
+
+@pytest.mark.parametrize(
+    ("path", "query", "target"),
+    [
+        ("/quotes/", "", "/quotes"),
+        ("/quotes/", "author_id=1", "/quotes?author_id=1"),
+        ("/authors/natsume-soseki/", "", "/authors/natsume-soseki"),
+        # A legacy URL with a slash still takes one hop to its final target.
+        ("/tools/", "", "/"),
+        ("/quotes/page/1/", "", "/quotes"),
+        ("/search/quotations/", "q=love", "/search?q=love"),
+    ],
+)
+def test_trailing_slashes_are_removed_in_one_hop(
+    path: str, query: str, target: str
+) -> None:
+    assert resolve_legacy_redirect(path, query) == target
 
 
 @pytest.mark.parametrize(
@@ -311,6 +328,7 @@ def test_page_one_keeps_filters_and_search_keeps_only_the_term() -> None:
         "///evil.example/page/1",
         "/\\evil.example/page/1",
         "//evil.example/tools",
+        "//evil.example/",
     ],
 )
 def test_protocol_relative_paths_never_become_a_redirect_target(path: str) -> None:
@@ -320,7 +338,13 @@ def test_protocol_relative_paths_never_become_a_redirect_target(path: str) -> No
 
 
 def test_untouched_paths_keep_routing() -> None:
-    for path in ("/quotes", "/quotes/page/2", "/authors/natsume-soseki", "/search"):
+    for path in (
+        "/",
+        "/quotes",
+        "/quotes/page/2",
+        "/authors/natsume-soseki",
+        "/search",
+    ):
         assert resolve_legacy_redirect(path, "") is None
 
 
@@ -332,15 +356,16 @@ def test_legacy_redirects_are_permanent_and_cacheable(seo_client: TestClient) ->
     assert response.headers["cache-control"] == "public, s-maxage=86400, max-age=3600"
 
 
-def test_trailing_slash_redirects_keep_the_path_cache_policy(
+def test_trailing_slash_redirects_are_permanent_and_cacheable(
     seo_client: TestClient,
 ) -> None:
-    # Starlette answers /quotes/ with a temporary 307, which must not inherit
-    # the one-day cache the permanent legacy redirects use.
+    # The old site's Next.js removed the slash with a 308 (ADR 008), so this is
+    # a permanent redirect with a relative Location, not Starlette's 307.
     response = seo_client.get("/quotes/", follow_redirects=False)
 
-    assert response.status_code == 307
-    assert response.headers["cache-control"] == "public, s-maxage=600, max-age=60"
+    assert response.status_code == 301
+    assert response.headers["location"] == "/quotes"
+    assert response.headers["cache-control"] == "public, s-maxage=86400, max-age=3600"
 
 
 def test_legacy_quote_ids_reach_the_final_canonical_in_one_hop(

@@ -11,7 +11,7 @@ the public router instead: ``/quotations/view/{id}.html`` and the four-digit
 from urllib.parse import parse_qs, urlencode
 
 PAGE_ONE_SUFFIX = "/page/1"
-SEARCH_QUOTATIONS_PATHS = frozenset({"/search/quotations", "/search/quotations/"})
+SEARCH_QUOTATIONS_PATH = "/search/quotations"
 
 # ``/prefix`` and everything under it collapse onto one page. Next.js wrote
 # these as ``:path*``, which also matches the bare prefix. More specific
@@ -38,9 +38,9 @@ PREFIX_REDIRECTS = (
 def resolve_legacy_redirect(path: str, query: str) -> str | None:
     """Return the 301 target for a legacy path, or None to keep routing.
 
-    Prefix redirects are checked before ``/page/1`` so that a path such as
-    ``/quotations/latest/page/1`` reaches ``/quotes/latest`` in one hop instead
-    of chaining through ``/quotations/latest``.
+    A trailing slash is removed, as the old site's Next.js default did with a
+    308. The stripped path still goes through the legacy rules, so ``/tools/``
+    reaches ``/`` in one hop instead of chaining through ``/tools``.
     """
     # A request for //evil.com/page/1 would otherwise derive the target
     # //evil.com, which a browser reads as another origin. Such a path belongs
@@ -48,19 +48,35 @@ def resolve_legacy_redirect(path: str, query: str) -> str | None:
     if not path.startswith("/") or path.startswith(("//", "/\\")):
         return None
 
+    if path != "/" and path.endswith("/"):
+        stripped = path.rstrip("/")
+        return _legacy_target(stripped, query) or _with_query(stripped, query)
+    return _legacy_target(path, query)
+
+
+def _with_query(path: str, query: str) -> str:
+    return f"{path}?{query}" if query else path
+
+
+def _legacy_target(path: str, query: str) -> str | None:
+    """Apply the old site's rules to a path without a trailing slash.
+
+    Prefix redirects are checked before ``/page/1`` so that a path such as
+    ``/quotations/latest/page/1`` reaches ``/quotes/latest`` in one hop instead
+    of chaining through ``/quotations/latest``.
+    """
     for prefix, destination in PREFIX_REDIRECTS:
         if path == prefix or path.startswith(f"{prefix}/"):
             return destination
 
     # The old site kept only ``q`` and dropped the legacy ``p`` page parameter.
-    if path in SEARCH_QUOTATIONS_PATHS:
+    if path == SEARCH_QUOTATIONS_PATH:
         terms = parse_qs(query).get("q")
         return "/search?" + urlencode({"q": terms[0]}) if terms else None
 
     # Page 1 is never its own URL: /quotes/page/1 -> /quotes. Filters live in
     # the query string, so they are carried over.
     if path.endswith(PAGE_ONE_SUFFIX):
-        base = path[: -len(PAGE_ONE_SUFFIX)] or "/"
-        return f"{base}?{query}" if query else base
+        return _with_query(path[: -len(PAGE_ONE_SUFFIX)] or "/", query)
 
     return None

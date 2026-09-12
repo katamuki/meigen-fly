@@ -51,6 +51,8 @@
   `/page/1`と`/search/quotations`はqueryを維持する
 - `/quotes/{4桁}`と`/quotations/view/{id}.html`はDBを引いて最終canonicalへ1 hopで送り、
   該当する公開名言が無ければ301せず404にする（旧実装は301の先で404だった）
+- `/`以外の末尾スラッシュ付きパスは、除去した形に旧URL規則を当てたうえで301（相対Location）で送る。
+  旧Next.jsの308除去の移植。DBを引く形（`/quotes/{4桁}/`など）は2 hopを許容し、GET/HEAD以外はStarletteの307のまま
 - 3xx応答は`public, s-maxage=86400, max-age=3600`。ただし`/search/`配下は先に`no-store`になる
 - sitemapの対象は§9.8どおり4表。characters/professionsの詳細ページは旧サイトと同様に含めない。
   静的一覧にはlastmodを付けない（毎日変わる値に意味がないため）

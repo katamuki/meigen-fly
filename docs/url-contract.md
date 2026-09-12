@@ -11,9 +11,16 @@
 | 公開オリジン / canonical host | `https://www.meigensyu.com/` |
 | alias | `https://meigensyu.com/` → path・queryを保って`www`へ1 hop 301（Cloudflare側で設定。フェーズ5） |
 | それ以外のHost | リダイレクトせず400（`ExactHostMiddleware`、ADR 013） |
-| 末尾スラッシュ | 内部リンクは末尾スラッシュなし。末尾スラッシュ付きURL（例: `/quotes/`）はStarletteの`redirect_slashes`が**307**で除去形へ送る（Locationは絶対URL）。旧Next.jsの308とは異なり、恒久リダイレクトにはしていない |
+| 末尾スラッシュ | 内部リンクは末尾スラッシュなし。`/` 以外の末尾スラッシュ付きURLは301で除去形へ送る（下記） |
 
 canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`app/config.py`）。テンプレートの `site_origin` がその値。
+
+末尾スラッシュの除去は、旧Next.jsの既定（308で除去）を移植したもの（`app/services/redirects.py`）。
+
+- GET/HEADで `/` 以外の末尾スラッシュ付きパスは、末尾の`/`を除いた形へ**301**で送る。Locationは相対パスで、queryは維持する。
+- 除去した形が§4の旧URL規則に当たる場合は、その行き先へ直接送る（`/tools/` → `/`、`/quotes/page/1/` → `/quotes`、`/search/quotations/?q=…` → `/search?q=…`）。queryの扱いは各規則に従う。
+- DBを引いてリダイレクトする形（`/quotes/{4桁数字}/`、slugを持つ名言の `/quotes/q{id}/`）は、除去 → 解決の**2 hop**になる。旧サイトも「308 → リダイレクト」の2 hopだったため許容する。
+- GET/HEAD以外はStarletteの `redirect_slashes`（307）のまま。
 
 ## 2. 名言のURL解決（slug / qid）
 
@@ -74,7 +81,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 | 22 | `/quotes/page/1` | `/quotes` |
 | 23 | `/quotes/latest/page/1` | `/quotes/latest` |
 
-評価順は「接頭辞リダイレクト → `/search/quotations` → `/page/1`」。12〜15は18より先に置く。接頭辞を先に見るのは、`/quotations/latest/page/1` が `/quotations/latest` を経由する2 hopにならないようにするため。
+評価順は「接頭辞リダイレクト → `/search/quotations` → `/page/1`」。末尾スラッシュ付きのパスは、スラッシュを除いた形でこの順に評価する（§1）。12〜15は18より先に置く。接頭辞を先に見るのは、`/quotations/latest/page/1` が `/quotations/latest` を経由する2 hopにならないようにするため。
 
 ## 5. 動的リダイレクト
 
@@ -94,7 +101,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 ## 6. リダイレクトの安全性とキャッシュ
 
 - `//` または `/\` で始まるパスはどのリダイレクト規則にも掛けず、そのまま routing へ渡す（結果は404）。`//evil.example/page/1` から `//evil.example` という protocol-relative なLocationを組み立てないため。
-- **301・308**の恒久リダイレクトは `public, s-maxage=86400, max-age=3600`（`app/middleware.py`）。Starletteが末尾スラッシュに返す**307は一時リダイレクト**なので、パスごとのキャッシュ方針（例: `/quotes/` なら `public, s-maxage=600, max-age=60`）のままにする。
+- **301・308**の恒久リダイレクト（末尾スラッシュの除去を含む）は `public, s-maxage=86400, max-age=3600`（`app/middleware.py`）。
 - `/search`・`/search/` 配下は他の規則より先に `private, no-store` になるため、`/search/quotations` の301はキャッシュされない。
 
 ## 7. sitemap と robots
@@ -116,7 +123,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 
 1. 上表の静的23本と動的2種が、最終canonicalへ**1 hop**で到達する。`curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' URL` で301と行き先を確認し、行き先を同じコマンドで叩いて200になること。`curl -I`（HEAD）は使わない。routeはGETのみ受け付けるため、ページとDBを引くリダイレクトが405になる。
 2. sitemapとSearch Console上位URLが200または301で同等コンテンツへ到達し、self-canonicalが正しい。
-3. `meigensyu.com` → `www.meigensyu.com` のhost正規化が効く。末尾スラッシュの307（§1）のLocationも `https://www.meigensyu.com/…` になっている。
+3. `meigensyu.com` → `www.meigensyu.com` のhost正規化が効く。`/quotes/` が301と `Location: /quotes` を返す（末尾スラッシュの除去、§1）。
 4. `/robots.txt` の `Sitemap:` が本番オリジンを指す。
 5. `/quotes/{slug}/og.png` と `/authors/{slug}/og.png` が1200×630のPNGを返し、Cloudflareで2回目がHITする。
 

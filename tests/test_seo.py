@@ -16,13 +16,20 @@ from app.schema import authors, categories, quotes, sources
 from app.services import og_image
 from app.services.og_image import (
     BG,
+    BODY_BOTTOM,
+    BODY_TOP,
+    CONTENT_RIGHT,
     DEFAULT_OG_FILENAME,
     FOOT_BOTTOM,
     FOOT_GAP,
+    FRAME_INSET,
     HEIGHT,
+    NO_LINE_START,
     SEAL_SIZE,
     WIDTH,
     _brand_left,
+    _font,
+    _wrap,
     display_width,
     normalize_og_text,
     render_author_og,
@@ -418,6 +425,34 @@ def test_a_long_credit_is_shortened_instead_of_running_under_the_brand() -> None
         )
     )
     assert gap.getcolors() == [(gap.width * gap.height, BG)]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "あ" * 9 + "。",
+        "あ" * 9 + "ーーー",
+        "大恋愛の経験のある者は友情を重んじない。",
+        "僕は平和が怖い。何よりも怖い。……地獄を隠しているような気がしてね。",
+    ],
+)
+def test_kinsoku_never_pushes_the_quote_past_the_right_edge(text: str) -> None:
+    # Pulling closing marks back onto a full line used to run them off the card.
+    png = render_quote_og(text=text, language="ja", credit="著者")
+
+    margin = Image.open(io.BytesIO(png)).crop(
+        (CONTENT_RIGHT + 1, BODY_TOP, WIDTH - FRAME_INSET - 1, BODY_BOTTOM)
+    )
+    assert margin.getcolors() == [(margin.width * margin.height, BG)]
+
+
+def test_a_closing_mark_moves_down_with_the_character_before_it() -> None:
+    text = "「" + "あ" * 9 + "。」"
+    lines = _wrap(_font(96), text, [1000.0, 974.0])
+
+    assert len(lines) > 1
+    assert "".join(lines) == text
+    assert all(line[0] not in NO_LINE_START for line in lines[1:])
 
 
 def test_og_routes_serve_png_with_the_thirty_day_edge_cache(

@@ -11,7 +11,7 @@
 | 公開オリジン / canonical host | `https://www.meigensyu.com/` |
 | alias | `https://meigensyu.com/` → path・queryを保って`www`へ1 hop 301（Cloudflare側で設定。フェーズ5） |
 | それ以外のHost | リダイレクトせず400（`ExactHostMiddleware`、ADR 013） |
-| 末尾スラッシュ | 内部リンクは末尾スラッシュなし。アプリは付与も除去もしない |
+| 末尾スラッシュ | 内部リンクは末尾スラッシュなし。末尾スラッシュ付きURL（例: `/quotes/`）はStarletteの`redirect_slashes`が**307**で除去形へ送る（Locationは絶対URL）。旧Next.jsの308とは異なり、恒久リダイレクトにはしていない |
 
 canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`app/config.py`）。テンプレートの `site_origin` がその値。
 
@@ -114,9 +114,9 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 
 ## 9. リリース前チェック
 
-1. 上表の静的23本と動的2種が、最終canonicalへ**1 hop**で到達する（`curl -sI` のLocationを1回だけ辿って200になること）。
+1. 上表の静的23本と動的2種が、最終canonicalへ**1 hop**で到達する。`curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' URL` で301と行き先を確認し、行き先を同じコマンドで叩いて200になること。`curl -I`（HEAD）は使わない。routeはGETのみ受け付けるため、ページとDBを引くリダイレクトが405になる。
 2. sitemapとSearch Console上位URLが200または301で同等コンテンツへ到達し、self-canonicalが正しい。
-3. `meigensyu.com` → `www.meigensyu.com` のhost正規化が効く。
+3. `meigensyu.com` → `www.meigensyu.com` のhost正規化が効く。末尾スラッシュの307（§1）のLocationも `https://www.meigensyu.com/…` になっている。
 4. `/robots.txt` の `Sitemap:` が本番オリジンを指す。
 5. `/quotes/{slug}/og.png` と `/authors/{slug}/og.png` が1200×630のPNGを返し、Cloudflareで2回目がHITする。
 

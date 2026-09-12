@@ -86,8 +86,8 @@ FONT_CANDIDATES = (
 _MAX_FACES = 16
 _HEAVY_STYLES = frozenset({"W6", "SemiBold", "Semibold", "DemiBold", "Bold"})
 
-# Characters that may not open a line. The previous line takes them back, which
-# is the minimal kinsoku ADR 018 asks for.
+# Characters that may not open a line. The end of the previous line moves down
+# with them, which is the minimal kinsoku ADR 018 asks for.
 NO_LINE_START = frozenset(
     "」』）］｝〉》〕】、。，．・：；？！ーゝゞ々"
     "ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ"
@@ -172,33 +172,53 @@ def size_step(value: str) -> str:
     return "long"
 
 
+def _carry_for_kinsoku(current: list[str]) -> list[str]:
+    """Take units off the line end so the next line opens with an allowed one.
+
+    The first unit always stays, so a line made only of closing marks is left
+    as it is rather than emptied.
+    """
+    for start in range(len(current) - 1, 0, -1):
+        head = current[start]
+        if not head.isspace() and head[0] not in NO_LINE_START:
+            carried = current[start:]
+            del current[start:]
+            return carried
+    return []
+
+
 def _wrap(font: ImageFont.FreeTypeFont, text: str, limits: list[float]) -> list[str]:
-    """Greedily wrap on measured glyph widths, then apply line-start kinsoku."""
+    """Greedily wrap on measured glyph widths, keeping kinsoku at line starts.
+
+    A closing mark that does not fit is never pulled back onto a full line,
+    which would run past the right edge; the preceding word or character moves
+    down with it instead.
+    """
     units: list[str] = []
     widest = max(limits)
     for token in _TOKEN_PATTERN.findall(text):
-        if not token.isspace() and font.getlength(token) > widest:
+        if token.isspace():
+            units.append(" ")
+        elif font.getlength(token) > widest:
             units.extend(token)  # A word wider than the canvas breaks per glyph.
         else:
             units.append(token)
 
     lines: list[str] = []
-    current = ""
+    current: list[str] = []
     for unit in units:
         limit = limits[min(len(lines), len(limits) - 1)]
-        candidate = f"{current} " if unit.isspace() else current + unit
-        if current and font.getlength(candidate.rstrip()) > limit:
-            lines.append(current.rstrip())
-            current = "" if unit.isspace() else unit
+        if unit == " ":
+            if current:
+                current.append(unit)
+        elif not current or font.getlength("".join(current) + unit) <= limit:
+            current.append(unit)
         else:
-            current = candidate
-    if current.strip():
-        lines.append(current.rstrip())
-
-    for index in range(1, len(lines)):
-        while len(lines[index]) > 0 and lines[index][0] in NO_LINE_START:
-            lines[index - 1] += lines[index][0]
-            lines[index] = lines[index][1:]
+            carried = _carry_for_kinsoku(current) if unit[0] in NO_LINE_START else []
+            lines.append("".join(current).rstrip())
+            current = [*carried, unit]
+    if current:
+        lines.append("".join(current).rstrip())
     return [line for line in lines if line]
 
 

@@ -2,8 +2,8 @@
 
 The file is committed because it must exist even when OG rendering fails (for
 example when the Japanese font is missing), so it cannot be produced on demand.
-Re-run this only when the OG design changes; the printed file name goes into
-``app/templates/base.html``.
+Re-run this only when the OG design changes, then set the printed file name as
+``DEFAULT_OG_FILENAME`` in ``app/services/og_image.py``.
 
 Usage: uv run python scripts/build_default_og.py
 """

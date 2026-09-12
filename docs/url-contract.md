@@ -41,6 +41,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 - パス型ページング: `/quotes/page/{n}`、`/quotes/latest/page/{n}`、`/authors/{slug}/page/{n}`、`/categories/{slug}/page/{n}`、`/sources/{slug}/page/{n}`、`/characters/{slug}/page/{n}`
 - クエリ型ページング: `/authors?page={n}`、`/sources?page={n}`、`/characters?page={n}`、`/authors/places/{slug}?page={n}`、`/professions/{slug}/quotes?page={n}`
 - **`/page/1` で終わるパスは常に301でその接頭辞へ正規化する**（queryは維持）。旧サイトの5本の`page/1`ルールを1つの規則にまとめたもので、旧サイトに無かった`/sources/{slug}/page/1`も同じ扱いになる。
+  - この規則と末尾スラッシュの除去（§1）は、パスが存在するかを確かめずに当てる。そのため存在しないパス（例: `/nonexistent/page/1`、`/nonexistent/`）も301を返し（1日キャッシュ、§6）、行き先で404になる。
 - `page` が2未満・非数値・範囲外のパス型ページは404（`_parse_paginated_page`）。
 - canonicalは常に「現在のパス＋内容を決めるquery（filterと`page`）」。したがって `/quotes/page/2` は自己canonical、`/authors?page=1` は `/authors`。
 
@@ -102,6 +103,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 
 - `//` または `/\` で始まるパスはどのリダイレクト規則にも掛けず、そのまま routing へ渡す（結果は404）。`//evil.example/page/1` から `//evil.example` という protocol-relative なLocationを組み立てないため。
 - **301・308**の恒久リダイレクト（末尾スラッシュの除去を含む）は `public, s-maxage=86400, max-age=3600`（`app/middleware.py`）。
+- DBを引く301（`/quotes/q{id}`→slug、`/quotes/{4桁数字}`、`/quotations/view/{id}.html`）も同じく1日キャッシュされる。slugを追加・変更したときは `/quotes/q{id}` もパージ対象に含める（ADR 014の「旧新の詳細URL」の一部として扱う）。旧形式の2つはTTL待ちを許容する。
 - `/search`・`/search/` 配下は他の規則より先に `private, no-store` になるため、`/search/quotations` の301はキャッシュされない。
 
 ## 7. sitemap と robots

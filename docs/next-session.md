@@ -66,11 +66,20 @@
   `uv run python scripts/build_default_og.py`で再生成し、`og_image.py`の`DEFAULT_OG_FILENAME`を更新する
 - JSON-LDは`<script type="application/ld+json">`のインライン。データブロックであり実行可能JSではないため
   ADR 016の`script-src 'self'`に抵触しない
-- **既知の未対応（3-E以前からの挙動、フェーズ4以降で判断）**: 全routeが`@router.get`のみのため
-  HEADリクエストは405を返す（リダイレクトmiddlewareだけはHEADにも301を返す）。
-  外形監視やクローラがHEADを使う場合は`methods=["GET", "HEAD"]`相当の対応が要る
-- **フェーズ5への申し送り**: Cloudflare Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`を
-  キャッシュ対象にする。`meigensyu.com`→`www.meigensyu.com`のhost正規化もCloudflare側
+- **フェーズ4への申し送り**: DBを引く301（`/quotes/q{id}`→slug、`/quotes/{4桁}`、`/quotations/view/{id}.html`）は
+  エッジで1日キャッシュされる。管理画面でslugを追加・変更したら`/quotes/q{id}`もパージ対象に含める
+  （ADR 014の「旧新の詳細URL」の一部として扱う）。旧形式の2つはTTL（1日）待ちを許容する
+- **フェーズ5への申し送り**:
+  - Cloudflare Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`をキャッシュ対象にする。
+    `meigensyu.com`→`www.meigensyu.com`のhost正規化もCloudflare側
+  - Debianの`fonts-noto-cjk`に入っているウェイトを実物で確かめる。SemiBoldが無ければ`FONT_CANDIDATES`の順で
+    Boldが選ばれ、デザインの600とずれる。`fonts-noto-cjk-extra`を入れるかBoldで許容するかを決め、
+    Dockerビルド時の検査では選ばれたファイルとフェイス名まで確かめる
+  - 全routeが`@router.get`のみのためHEADリクエストは405を返す（リダイレクトmiddlewareだけはHEADにも301を返す）。
+    外形監視はGETで行う
+  - uvicornのアクセスログは既定でqueryを含むリクエスト行を出す。ADR 015の「queryを通常ログへ残さない」に
+    合わせてログ設定を決める。送信元IPがログに出るか（Tunnel経由の転送ヘッダーの扱い）も合わせて確かめる。
+    プライバシーポリシーの「IPと検索語を通常ログへ保存しない」はこの設定を前提にしている
 
 #### 3-Dで決めた既定値と申し送り
 

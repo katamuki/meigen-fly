@@ -84,7 +84,7 @@
 | `/ranking` | ランキング | 名言/著者/カテゴリ |
 | `/random` | ランダム名言20件＋シャッフル | 現行機能を維持し、`private, no-store`＋Cloudflare Bypass |
 | `/search` | 全文検索（**キャッシュ不可**） | HTMXインクリメンタル検索 |
-| `/about`, `/privacy`, `/terms` | 静的ページ | Markdown管理 |
+| `/about`, `/privacy`, `/terms` | 静的ページ | 旧サイトのMarkdownを一度だけHTMLへ変換したJinjaテンプレートで管理（Markdownライブラリは使わない） |
 | `/login`, `/403` | 管理認証フロー | `/login`は`/admin/`へ一時リダイレクトしてCloudflare Access認証を開始。`/403`は権限エラー時の遷移先 |
 
 ### 3.2 移植する主要機能
@@ -293,6 +293,7 @@ meigen-fly/
 - [x] SEO（sitemap/robots/構造化データ/canonical。3-E、2026-09-10）
 - [x] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + [URL契約表](url-contract.md)に基づく正規化。3-E、2026-09-10）
 - [x] OG画像（D5/ADR 018。3-E、2026-09-10）
+- [x] 静的ページ（/about, /privacy, /terms。旧Markdownを変換したJinjaテンプレート、プライバシーポリシーは新サイトの実態に合わせて改定。3-Eの追加作業、2026-09-13）
 - [ ] サイト本体完成後、必要な場合だけGA4を別フェーズで導入（通常のpage view、Privacy Policy、同意要件を確認）
 - [ ] サイト本体完成後、必要な場合だけAdSenseを別フェーズで導入（対象route、Privacy Policy、同意要件を確認）
 

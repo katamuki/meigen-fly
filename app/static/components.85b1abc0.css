@@ -269,3 +269,14 @@ a.mg-hero__quote:hover { text-decoration: none; color: var(--ink); }
   .mg-footer__inner { flex-direction: column; gap: var(--sp-4); }
   :root { --fs-quote-lg: 24px; --fs-display: 26px; }
 }
+
+/* --- Static documents (/about, /privacy, /terms) --- */
+.mg-doc__lead { color: var(--muted); margin: var(--sp-3) 0 0; }
+.mg-doc__meta { color: var(--subtle); font-size: var(--fs-small); margin: var(--sp-2) 0 0; }
+.mg-doc { margin-top: var(--sp-8); }
+.mg-doc h2 { font-size: var(--fs-h2); font-weight: 700; margin: var(--sp-8) 0 var(--sp-3); }
+.mg-doc h3 { font-size: var(--fs-body); font-weight: 700; margin: var(--sp-6) 0 var(--sp-2); }
+.mg-doc > :first-child { margin-top: 0; }
+.mg-doc p, .mg-doc ul, .mg-doc ol { margin: 0 0 var(--sp-4); }
+.mg-doc ul, .mg-doc ol { padding-left: 1.5em; }
+.mg-doc hr { border: 0; border-top: 1px solid var(--line); margin: var(--sp-8) 0; }

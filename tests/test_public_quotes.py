@@ -1,3 +1,4 @@
+import re
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -464,7 +465,7 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
         "/static/theme.caadaed0.js",
         "/static/likes.313469f4.js",
         "/static/tokens.74bc89e2.css",
-        "/static/components.fae1678a.css",
+        "/static/components.85b1abc0.css",
     ):
         asset = public_client.get(path)
         assert asset.status_code == 200
@@ -475,10 +476,50 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
     assert "window.crypto.randomUUID" in like_script
     assert 'method: "POST"' in like_script
 
-    mobile_css = public_client.get("/static/components.fae1678a.css").text
+    mobile_css = public_client.get("/static/components.85b1abc0.css").text
     assert ".mg-header__spacer { display: none; }" in mobile_css
     assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
     assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css
+
+
+@pytest.mark.parametrize(
+    ("path", "title"),
+    [
+        ("/about", "このサイトについて"),
+        ("/privacy", "プライバシーポリシー"),
+        ("/terms", "利用規約"),
+    ],
+)
+def test_static_pages_render_with_self_canonical_and_weekly_cache(
+    public_client: TestClient, path: str, title: str
+) -> None:
+    response = public_client.get(path)
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, s-maxage=604800, max-age=86400"
+    assert f'<link rel="canonical" href="http://localhost:8000{path}">' in response.text
+    assert f'<h1 class="mg-h1">{title}</h1>' in response.text
+    assert f"<title>{title}｜名言集.com</title>" in response.text
+
+
+def test_policy_pages_show_their_last_update(public_client: TestClient) -> None:
+    privacy = public_client.get("/privacy").text
+    assert "最終更新日: <time" in privacy
+    # Section 8 sends readers to the contact at the end of the page.
+    assert 'href="https://docs.google.com/forms/d/e/' in privacy
+    assert "最終更新日: <time" in public_client.get("/terms").text
+    assert "最終更新日" not in public_client.get("/about").text
+
+
+def test_every_footer_link_resolves(public_client: TestClient) -> None:
+    # The footer pointed at /about, /privacy and /terms long before they existed.
+    home = public_client.get("/").text
+    footer = home.split('<footer class="mg-footer">', 1)[1].split("</footer>", 1)[0]
+    links = re.findall(r'href="([^"]+)"', footer)
+
+    assert {"/about", "/privacy", "/terms"} <= set(links)
+    for link in links:
+        assert public_client.get(link, follow_redirects=False).status_code == 200
 
 
 def test_random_returns_at_most_twenty_public_quotes_without_cache(

@@ -895,6 +895,21 @@ def profession_quotes(
     return _profession_detail_response(request, connection, slug=slug, page=page)
 
 
+@router.get("/about", response_class=HTMLResponse)
+def about_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="about.html")
+
+
+@router.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="privacy.html")
+
+
+@router.get("/terms", response_class=HTMLResponse)
+def terms_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="terms.html")
+
+
 @router.get("/robots.txt", response_class=PlainTextResponse)
 def robots() -> PlainTextResponse:
     return PlainTextResponse(render_robots(PUBLIC_ORIGIN))

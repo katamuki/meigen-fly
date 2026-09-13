@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{#- Shared layout for /about, /privacy and /terms. The documents were converted
+    once from the old site's Markdown, so edit the HTML in the page templates. -#}
+{% block title %}{{ page_title }}｜名言集.com{% endblock %}
+{% block meta_description %}{{ page_description }}{% endblock %}
+{% block content %}
+<nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><span class="current">{{ page_title }}</span></nav>
+<div class="mg-text mg-page-body">
+  <h1 class="mg-h1">{{ page_title }}</h1>
+  <p class="mg-doc__lead">{{ page_description }}</p>
+  {% if updated_on %}<p class="mg-doc__meta">最終更新日: <time datetime="{{ updated_on }}">{{ updated_label }}</time>（v{{ version }}）</p>{% endif %}
+  <div class="mg-doc">
+{% block document %}{% endblock %}
+    {% if changelog %}
+    <h2>改定履歴</h2>
+    <ul>
+      {% for date, label, note in changelog %}<li><time datetime="{{ date }}">{{ label }}</time>: {{ note }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

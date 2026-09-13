@@ -16,8 +16,8 @@ from app.instants import parse_instant
 from app.schema import authors, categories, quotes, sources
 from app.services.quotes import quote_path
 
-# Listing pages that exist as routes. /search is left out on purpose: it is
-# noindex and disallowed below.
+# Listing and static pages that exist as routes. /search is left out on
+# purpose: it is noindex and disallowed below.
 STATIC_PATHS = (
     "/",
     "/quotes",
@@ -29,6 +29,9 @@ STATIC_PATHS = (
     "/sources",
     "/characters",
     "/professions",
+    "/about",
+    "/privacy",
+    "/terms",
 )
 
 SLUG_SOURCES = (

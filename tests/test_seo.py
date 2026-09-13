@@ -145,6 +145,9 @@ def test_sitemap_lists_public_quotes_authors_sources_and_categories(
     assert f"<loc>{ORIGIN}/authors/natsume-soseki</loc>" in body
     assert f"<loc>{ORIGIN}/sources/kokoro</loc>" in body
     assert f"<loc>{ORIGIN}/categories/life</loc>" in body
+    # The old sitemap listed the static pages too.
+    for path in ("/about", "/privacy", "/terms"):
+        assert f"<loc>{ORIGIN}{path}</loc>" in body
     # Disabled quotes and the noindex search page stay out.
     assert "/quotes/hidden" not in body
     assert f"<loc>{ORIGIN}/search</loc>" not in body

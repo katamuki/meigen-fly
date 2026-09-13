@@ -108,7 +108,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 
 ## 7. sitemap と robots
 
-- `/sitemap.xml`: 一覧ページ（`/`、`/quotes`、`/quotes/latest`、`/random`、`/ranking`、`/authors`、`/categories`、`/sources`、`/characters`、`/professions`）と静的ページ（`/about`、`/privacy`、`/terms`）＋ 公開quotes・authors・sources・categories。lastmodは `updated_at` のUTC日付。対象4表は[inventory-4 §9.8](database/inventory-4-new-db-design.md)の通りで、characters/professionsの詳細は旧サイトと同じく含めない。
+- `/sitemap.xml`: 一覧ページ（`/`、`/quotes`、`/quotes/latest`、`/random`、`/ranking`、`/authors`、`/categories`、`/sources`、`/characters`、`/professions`）と静的ページ（`/about`、`/privacy`、`/terms`）＋ 公開quotes・authors・sources・categories。lastmodは `updated_at` のUTC日付で、一覧・静的ページには付けない（毎回変わる値に意味がないため）。対象4表は[inventory-4 §9.8](database/inventory-4-new-db-design.md)の通りで、characters/professionsの詳細は旧サイトと同じく含めない。
 - `/robots.txt`: `Disallow: /admin`、`/api/`、`/search`。`/search` はnoindexであり、断片 `/search/partial` はmetaを持てないためパスごと除外する。`Sitemap:` は `PUBLIC_ORIGIN` から組み立てる。
 
 ## 8. OG画像

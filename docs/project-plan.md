@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-08-25（フェーズ3-A完了を反映）
+> - 更新日: 2026-09-13（フェーズ3完了と、フェーズ4〜6への申し送りを反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -302,25 +302,29 @@ meigen-fly/
 - [ ] 各エンティティCRUD
 - [ ] 一括登録（quotes/authors bulk）
 - [ ] ランキング再計算（D6）
-- [ ] Cloudflareパージ連携
+- [ ] Cloudflareパージ連携（ADR 014。slugの追加・変更時は、エッジで1日キャッシュされる`/quotes/q{id}`の301もパージ対象に含める。[URL契約表](url-contract.md)§6）
 
 ### フェーズ5: デプロイ・インフラ
 - [ ] Dockerfile / fly.toml / ボリューム
+- [ ] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`と`fontconfig`を入れ、ビルド時に選ばれたフォントファイルとフェイス名まで検査する。Debianの`fonts-noto-cjk`にSemiBoldが無ければ`FONT_CANDIDATES`の順でBoldが選ばれ、デザインの600とずれる。`fonts-noto-cjk-extra`を入れるかBoldで許容するかを決める
+- [ ] Uvicornのアクセスログ設定: 既定ではqueryを含むリクエスト行が出るため、queryと送信元IPを通常ログへ残さない設定にする（ADR 015。プライバシーポリシーの「IPと検索語を通常ログへ保存しない」の前提。Tunnel経由の転送ヘッダーでIPが出るかも確かめる）
 - [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
-- [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）
+- [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）。Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`もキャッシュ対象にし、`meigensyu.com`→`www.meigensyu.com`のhost正規化もここで設定する
 - [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）
 - [ ] no-store/Bypassの`/healthz`外形監視、デプロイ後smoke test、Tunnel/token漏洩時runbook（D14/ADR 013）
 - [ ] CI/CD（GitHub Actions → flyctl deploy）
-- [ ] UptimeRobotによる`/healthz`外形監視と定期ジョブHeartbeat監視（アプリPushを主通知、メールを予備）
+- [ ] UptimeRobotによる`/healthz`外形監視と定期ジョブHeartbeat監視（アプリPushを主通知、メールを予備）。routeはGETのみでHEADは405になるため、外形監視はGETで行う
 
 ### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
-- [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する
+- [ ] HTMLエラーページの要否を判断する。現状は404・429などがFastAPI既定のJSONを返す（3-Dからの持ち越し）
+- [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する（[URL契約表](url-contract.md)§9）
 - [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する
 - [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する
 - [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_AUD`を設定する
 - [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮）
 - [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する
+- [ ] プライバシーポリシーの記述（通常ログにIP・検索語を残さない、管理画面の認証、サーバーへの直接アクセス防止）が本番の設定と一致することを確認する
 - [ ] Tunnel経由の正常性確認後、Flyのpublic service/IPを削除する
 - [ ] 旧環境1〜2週間維持後に廃止
 
@@ -352,5 +356,5 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ3（公開ページ実装）へ着手。`data/app.db`は`scripts/rebuild_sqlite.sh`で本番相当データから再構築できる
-2. フェーズ3でADR 018に従ってOG画像生成を実装
+1. フェーズ4（管理画面）へ着手する。作業指示は着手するセッションで、ADR 012・014・005を読んで作成する
+2. `data/app.db`は`scripts/rebuild_sqlite.sh`で本番相当データから再構築できる

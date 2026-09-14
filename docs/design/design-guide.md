@@ -96,3 +96,13 @@ Light/Dark の全コンポーネント一覧は `proposal-b/preview.html`、実�
 - **フォント**: 日本語Webフォントは重いため、**system-ui系スタックを前提**（`--font-sans` / `--font-serif`）。見出し・引用は端末搭載の明朝（`Hiragino Mincho ProN` / `Yu Mincho` 等）にフォールバック。`Noto Serif JP` はスタック末尾に置くのみで、本体では読み込まない。
 - **アニメーション**: Cloudflareエッジキャッシュ前提の静的HTML。凝った動きより表示速度・可読性を優先。
 - **OG画像**: サイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとする。名言は `/quotes/{slug または q{id}}/og.png`、著者は `/authors/{slug}/og.png` で、PillowによりCloudflareキャッシュミス時に1200×630のPNGを生成する。`proposal-b/og/og.html` は本番でHTML画像化するテンプレートではなく、Pillow実装の視覚仕様・プレビューとして使う。名言は表示幅20/40/80の3段階、80超は`…`で省略し、本番コンテナのローカル`Noto Serif CJK JP`で描画する。詳細は [ADR 018](../decisions/018-og-image-generation.md)を正本とする。
+
+## 7. 管理画面（`/admin`）
+
+> 2026-09-13追記（フェーズ4着手時の決定）。管理画面は本人だけが使う閲覧・編集用の画面で、提案Bのデザイン作業の対象外とする。新しいデザイン案・プレビュー素材（`proposal-b/`・render-check）は作らない。
+
+- **テンプレート**: 公開用 `base.html` とは別に `app/templates/admin/base.html` を持つ。公開用のヘッダー・タブバー・フッター・テーマ切替・OGP・構造化データは含めず、`noindex` を付ける。
+- **CSS**: `tokens.css` と、管理画面専用の小さなCSS 1ファイル（ハッシュ付きファイル名）だけを読む。`components.css` は読まない。専用CSSは表・フォーム・ボタン・通知・管理メニューに限り、色・余白・角丸・フォントは `tokens.css` の変数を参照する（§2の原則どおり直値を書かない）。
+- **ダーク**: `tokens.css` のOS追従（§3の1）だけを使う。`theme.js` と手動切替は置かない。
+- **操作**: 通常の `<form method="post">` 送信と、成功後のリダイレクト（PRG）で作り、HTMXは使わない。削除などの確認は確認画面で行い、JSの `confirm()`・インラインJS・`style` 属性は使わない（§6・[ADR 016](../decisions/016-csp-htmx-rules.md)）。
+- **品質の基準**: 読みやすく、誤操作しにくいこと。公開サイトと同じ作り込みは求めない。

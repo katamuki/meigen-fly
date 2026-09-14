@@ -251,8 +251,9 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `CF_ZONE_ID` | Cloudflare Zone ID |
 | `CF_API_TOKEN` | Cloudflare API Token（`Cache Purge` 権限のみ） |
 | `TUNNEL_TOKEN` | remotely-managed Cloudflare Tunnelのconnector token（Fly secret） |
-| `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer・管理画面application audience検証 |
+| `CF_ACCESS_TEAM_DOMAIN` / `CF_ACCESS_AUD` | Cloudflare Access JWTのissuer（`https://<team>.cloudflareaccess.com`、末尾slashなし）・管理画面application audience検証 |
 | `SECRET_KEY` | CSRF token等のアプリ署名（管理者パスワードやAccess JWT署名には使わない） |
+| `ADMIN_DEV_EMAIL` | ローカル開発専用。`CF_ACCESS_AUD`が未設定で`PUBLIC_ORIGIN`がlocalhostのときだけJWT検証を省略する管理者email。本番では設定しない（[ADR 012](012-admin-auth-cloudflare-access.md)「実装方針」） |
 | `GA_MEASUREMENT_ID` | 本体完成後、GA4を導入する場合だけ設定。未設定時はAnalyticsコードを出さない |
 | `ADSENSE_PUBLISHER_ID` | 本体完成後、AdSenseを導入する場合だけ設定。未設定時は広告コードを出さない |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |

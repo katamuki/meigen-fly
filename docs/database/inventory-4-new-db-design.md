@@ -337,6 +337,40 @@
 - 索引: `(rank, category_id)`。別score sortはauthorと同じ条件付き方針。
 - 根拠: 第1部§3.9・§8、第2部§3、第3部§4.3 **[本番dumpで確認／sort契約はリポジトリから推定]**。
 
+### 6.4 再計算の計算式
+
+> 2026-09-13追記（フェーズ4着手時）。旧リポジトリの `supabase/migrations/20260111163755_add-legacy-votes-to-ranking.sql`（名言）と `20251026022432_category-author-rankings.sql`（著者・カテゴリ、`refresh_quote_ranking_scores`内の同期処理）から、挙動を変えずに移植する式。式や係数の変更はユーザー判断とする。
+
+**係数**（判断#7で確認した本番値）: `weight_factor=10`、`like_weight_default=1`、`like_weight_7d=5`、`like_weight_1d=10`。CLIの型付き定数として持ち、汎用設定表やコマンド引数にはしない。
+
+**基準時刻**: 再計算の開始時に `now` を1回だけ取り、1日・7日の境界と3表の `refreshed_at` に同じ値を使う（ADR 011 codec）。
+
+**名言（`quote_ranking_scores`）** — `enable` に関わらず全名言について1行ずつ作る（旧MVと同じ。公開側の表示は `enable = 1` で絞る）。
+
+- `likes_total` = 有効likes（`is_valid = 1`）の全件数 + `legacy_vote_count`
+- `likes_7d` = `created_at >= now − 7日` の有効likes件数
+- `likes_1d` = `created_at >= now − 1日` の有効likes件数（旧票は期間件数に含めない）
+- `score_total` = `weight`×10 + (`likes_total` − `likes_7d`)×1 + (`likes_7d` − `likes_1d`)×5 + `likes_1d`×10（`weight` がNULLなら0）
+
+**著者（`author_rankings`）** — `enable = 1` かつ `author_id` のある名言を著者ごとに集計する。対象名言が0件の著者は行を作らない。
+
+- `quote_count` = 対象名言数、`total_score` = `score_total` の合計、`avg_score` = `score_total` の平均
+- `score` = 0.6×z(`total_score`) + 0.4×z(log10(1 + `quote_count`))
+- `rank` = `score` 降順・`author_id` 昇順の連番
+
+**カテゴリ（`category_rankings`）** — `enable = 1` の名言と `quote_categories` の（カテゴリ, 名言）組を重複なく集計する。直接の割り当てだけを数え、親カテゴリへは合算しない。
+
+- `quote_count`・`total_score`・`avg_score` は著者と同じ定義
+- `adjusted_score` = `total_score` × √max(`avg_score`, 0)
+- `score` = 0.5×z(`total_score`) + 0.3×z(`avg_score`) + 0.2×z(log10(1 + `quote_count`))
+- `rank` = `score` 降順・`category_id` 昇順の連番
+
+**z値**: 同じ表の全行を母集団とした (x − 平均) / 母標準偏差。母標準偏差が0ならその項を0とする。対数は旧PostgreSQLの `log()` に合わせて常用対数を使う。SQLiteに標準偏差の関数が無いため、件数・合計・平均はSQLで集計し、z値と順位はPython（`statistics.pstdev`・`math.log10`）で計算する。
+
+**更新**: 3表を1トランザクションで全行入れ替える。書き込みロックを先に取り（`BEGIN IMMEDIATE`、またはトランザクション冒頭で3表を `DELETE` する同等の方法）、定期実行と管理画面のボタンが重なっても直列に処理されるようにする。失敗時はrollbackし、前回の世代を残す。
+
+**移植しないもの**: 旧関数の60秒後の自動再試行、`pg_try_advisory_xact_lock`（→ supercronic側の `flock` とSQLiteの書き込みロック）、`ranking_refresh_logs`（→ stderr・Heartbeat。ADR 005）。
+
 ## 7. 日時と歴史日付
 
 ### 7.1 固定長UTC TEXTの適用範囲
@@ -392,7 +426,7 @@ flowchart LR
 ```
 
 - 流れは原本→再計算→snapshot→参照の一方向とし、snapshotから原本へ書き戻さない。
-- ranking係数は現行`ranking_parameters`の本番値を確認して、汎用DB設定表ではなくCLIの明示設定へ移す。挙動変更は別のユーザー判断とする。
+- ranking係数は判断#7で確認した本番値を、汎用DB設定表ではなくCLIの明示設定へ移す。計算式は§6.4。挙動変更は別のユーザー判断とする。
 - CLIは有効likesだけを数え、1日/7日の境界をADR 011 codecで作る。旧票はtotal寄与だけとし、期間likesへ混ぜない。
 - 3 snapshotの更新に失敗した場合は全体をrollbackし、前回正常世代を参照し続ける。成功heartbeatはtransaction成功後だけ更新する。
 - いいねPOST直後の本人向け件数は原本から直接数えられるが、ランキングsnapshotは次回CLIまで変えない。これはADR 006の非リアルタイム表示許容と整合する。
@@ -623,7 +657,7 @@ SELECT
 | `professions` | 同名 | 維持 | PGroonga索引なしで変換移行 | 第3部§4.14 **[リポジトリ内で一致]** |
 | `quote_likes` | 同名 | 再編 | quote/client/time/validを移行。IP/hash/UAとrow UUIDは既定案で除外 | 第3部§4.11 **[一部本番確認待ち]** |
 | `quote_ranking_scores` | 同名 | 維持 | 行は移さず再計算 | 第3部§4.3 **[リポジトリ内で一致]** |
-| `ranking_parameters` | CLIの明示設定 | 処理へ置換 | 本番係数値を変換。汎用設定表は作らない | 第3部§2.1・§5 **[値は本番確認待ち]** |
+| `ranking_parameters` | CLIの明示設定 | 処理へ置換 | 本番係数値を変換。汎用設定表は作らない | 第3部§2.1・§5、判断#7 **[値は本番dumpで確認済み、計算式は§6.4]** |
 | `ranking_refresh_logs` | stderr/監視/heartbeat | 処理へ置換 | 新DBに履歴表を作らない。旧履歴の保存要否はユーザー判断 | 第3部§4.4・ADR 005 **[本番確認待ち]** |
 
 ### 10.1 table以外の対応

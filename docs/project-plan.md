@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-09-13（フェーズ3完了と、フェーズ4〜6への申し送りを反映）
+> - 更新日: 2026-09-13（フェーズ3完了、フェーズ4〜6への申し送り、フェーズ4の決定事項と分割を反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -85,7 +85,7 @@
 | `/random` | ランダム名言20件＋シャッフル | 現行機能を維持し、`private, no-store`＋Cloudflare Bypass |
 | `/search` | 全文検索（**キャッシュ不可**） | HTMXインクリメンタル検索 |
 | `/about`, `/privacy`, `/terms` | 静的ページ | 旧サイトのMarkdownを一度だけHTMLへ変換したJinjaテンプレートで管理（Markdownライブラリは使わない） |
-| `/login`, `/403` | 管理認証フロー | `/login`は`/admin/`へ一時リダイレクトしてCloudflare Access認証を開始。`/403`は権限エラー時の遷移先 |
+| `/login` | 管理認証フロー | `/admin`へ302でリダイレクトしてCloudflare Access認証を開始。旧`/403`ページは移植しない（未許可者はAccessが拒否し、JWT検証失敗はアプリが403を返す。ADR 012） |
 
 ### 3.2 移植する主要機能
 
@@ -298,17 +298,27 @@ meigen-fly/
 - [ ] サイト本体完成後、必要な場合だけAdSenseを別フェーズで導入（対象route、Privacy Policy、同意要件を確認）
 
 ### フェーズ4: 管理画面
-- [ ] Cloudflare Access JWTの最小限の検証（署名・issuer・audience・期限・email）+ CSRF（D3/ADR 012）
-- [ ] 各エンティティCRUD
-- [ ] 一括登録（quotes/authors bulk）
-- [ ] ランキング再計算（D6）
-- [ ] Cloudflareパージ連携（ADR 014。slugの追加・変更時は、エッジで1日キャッシュされる`/quotes/q{id}`の301もパージ対象に含める。[URL契約表](url-contract.md)§6）
+
+5回のセッション（4-A〜4-E）に分割する。各回の作業指示は[`docs/next-session.md`](next-session.md)。
+
+**着手時の決定（2026-09-13）**:
+- 依存は`pyjwt[crypto]`だけを追加する。管理画面の入力はURLエンコードのフォームに限り、`python-multipart`は入れない。CSRF tokenは標準`hmac`、パージ要求は標準`urllib.request`で作る（[ADR 012](decisions/012-admin-auth-cloudflare-access.md)「実装方針」）
+- 管理画面は新しいデザイン作業をせず、`tokens.css`の変数と専用の小さなCSSで作る（[design-guide §7](design/design-guide.md)）
+- ランキングは旧式を同値移植する。計算式の正本は[inventory-4 §6.4](database/inventory-4-new-db-design.md)
+- `/login`は`/admin`へ302。`/403`ページは作らない。ローカル開発だけの認証迂回`ADMIN_DEV_EMAIL`を設ける（ADR 012「実装方針」）
+
+- [ ] 4-A 管理基盤: Cloudflare Access JWTの最小限の検証（署名・issuer・audience・期限・email）+ CSRF + 管理レイアウト + `/login` + 操作ログ（D3/ADR 012）
+- [ ] 4-B ランキング再計算（CLI + 管理画面のボタン。D6/ADR 005）+ Cloudflareパージの共通処理（ADR 014）
+- [ ] 4-C 名言・著者のCRUD（パージ連携を含む。slugの追加・変更時は、エッジで1日キャッシュされる`/quotes/q{id}`の301もパージ対象に含める。[URL契約表](url-contract.md)§6）
+- [ ] 4-D その他マスタのCRUD（categories / characters / sources / professions。source_types・countriesはフォームの選択肢）
+- [ ] 4-E 一括登録（quotes: タブ区切り / authors: JSON）
 
 ### フェーズ5: デプロイ・インフラ
 - [ ] Dockerfile / fly.toml / ボリューム
 - [ ] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`と`fontconfig`を入れ、ビルド時に選ばれたフォントファイルとフェイス名まで検査する。Debianの`fonts-noto-cjk`にSemiBoldが無ければ`FONT_CANDIDATES`の順でBoldが選ばれ、デザインの600とずれる。`fonts-noto-cjk-extra`を入れるかBoldで許容するかを決める
 - [ ] Uvicornのアクセスログ設定: 既定ではqueryを含むリクエスト行が出るため、queryと送信元IPを通常ログへ残さない設定にする（ADR 015。プライバシーポリシーの「IPと検索語を通常ログへ保存しない」の前提。Tunnel経由の転送ヘッダーでIPが出るかも確かめる）
 - [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）
+- [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeout・成功時Heartbeat（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
 - [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）。Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`もキャッシュ対象にし、`meigensyu.com`→`www.meigensyu.com`のhost正規化もここで設定する
 - [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）
@@ -321,7 +331,7 @@ meigen-fly/
 - [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する（[URL契約表](url-contract.md)§9）
 - [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する
 - [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する
-- [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_AUD`を設定する
+- [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_TEAM_DOMAIN`・`CF_ACCESS_AUD`・`SECRET_KEY`・`CF_ZONE_ID`・`CF_API_TOKEN`を設定し、`ADMIN_DEV_EMAIL`が設定されていないことを確認する
 - [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮）
 - [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する
 - [ ] プライバシーポリシーの記述（通常ログにIP・検索語を残さない、管理画面の認証、サーバーへの直接アクセス防止）が本番の設定と一致することを確認する
@@ -356,5 +366,5 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ4（管理画面）へ着手する。作業指示は着手するセッションで、ADR 012・014・005を読んで作成する
+1. フェーズ4（管理画面）を4-Aから順に実施する。作業指示は[`docs/next-session.md`](next-session.md)
 2. `data/app.db`は`scripts/rebuild_sqlite.sh`で本番相当データから再構築できる

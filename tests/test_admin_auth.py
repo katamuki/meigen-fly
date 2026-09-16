@@ -145,14 +145,40 @@ def test_admin_rejects_missing_email(admin_client) -> None:
     assert _get_admin(client, token).status_code == 403
 
 
-def test_admin_rejects_missing_expiration(admin_client) -> None:
+@pytest.mark.parametrize(
+    ("missing_claim", "log_reason"),
+    [
+        ("aud", "audience missing"),
+        ("iss", "issuer missing"),
+        ("exp", "expiration missing"),
+    ],
+)
+def test_admin_logs_the_missing_required_claim(
+    admin_client,
+    caplog: pytest.LogCaptureFixture,
+    missing_claim: str,
+    log_reason: str,
+) -> None:
     client, private_key = admin_client
+    claims = {
+        "aud": AUDIENCE,
+        "iss": TEAM_DOMAIN,
+        "exp": datetime.now(UTC) + timedelta(minutes=5),
+        "email": EMAIL,
+    }
+    del claims[missing_claim]
     token = jwt.encode(
-        {"aud": AUDIENCE, "iss": TEAM_DOMAIN, "email": EMAIL},
+        claims,
         private_key,
         algorithm="RS256",
     )
-    assert _get_admin(client, token).status_code == 403
+
+    with caplog.at_level("WARNING", logger="app.admin"):
+        response = _get_admin(client, token)
+
+    assert response.status_code == 403
+    assert f"admin authentication rejected: {log_reason}" in caplog.text
+    assert token not in caplog.text
 
 
 def test_admin_accepts_valid_assertion_and_shows_dashboard(admin_client) -> None:

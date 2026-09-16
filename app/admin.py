@@ -101,8 +101,13 @@ def require_admin(request: Request) -> str:
         _forbidden("issuer invalid")
     except InvalidSignatureError:
         _forbidden("signature invalid")
-    except MissingRequiredClaimError:
-        _forbidden("expiration missing")
+    except MissingRequiredClaimError as error:
+        missing_claim_reasons = {
+            "aud": "audience missing",
+            "iss": "issuer missing",
+            "exp": "expiration missing",
+        }
+        _forbidden(missing_claim_reasons.get(error.claim, "required claim missing"))
     except InvalidTokenError:
         _forbidden("assertion invalid")
 

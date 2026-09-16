@@ -26,3 +26,13 @@ uv run pytest                 # テスト
 ```
 
 旧環境（Supabase）からのデータ移行は`scripts/`のエクスポート・投入・検証スクリプトで行います。手順と変換ルールは[docs/database/migration-runbook.md](docs/database/migration-runbook.md)を参照してください。
+
+## ローカル管理画面
+
+ローカルでは、開発用の管理者メールアドレスと一時的なCSRF署名鍵をコマンドの環境変数として渡して起動します。`CF_ACCESS_AUD`は設定しないでください。
+
+```bash
+ADMIN_DEV_EMAIL=you@example.com SECRET_KEY="$(openssl rand -hex 32)" uv run uvicorn app.main:app --reload
+```
+
+起動後に <http://localhost:8000/admin> を開きます。この迂回は`PUBLIC_ORIGIN`のホストが`localhost`または`127.0.0.1`の場合だけ有効です。生成した鍵の実値はリポジトリやシェル設定へ保存しません。

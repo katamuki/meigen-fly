@@ -1,0 +1,25 @@
+{% extends "admin/base.html" %}
+
+{% block title %}ダッシュボード{% endblock %}
+
+{% block content %}
+  <h1>ダッシュボード</h1>
+  <dl class="admin-stats">
+    <div>
+      <dt>公開名言</dt>
+      <dd>{{ published_quotes|comma }}</dd>
+    </div>
+    <div>
+      <dt>非公開名言</dt>
+      <dd>{{ private_quotes|comma }}</dd>
+    </div>
+    <div>
+      <dt>著者</dt>
+      <dd>{{ author_count|comma }}</dd>
+    </div>
+  </dl>
+  <section class="admin-menu" aria-labelledby="admin-menu-title">
+    <h2 id="admin-menu-title">管理機能</h2>
+    <p>現在利用できる管理機能はダッシュボードのみです。</p>
+  </section>
+{% endblock %}

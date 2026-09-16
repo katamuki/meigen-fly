@@ -57,6 +57,27 @@ def get_public_authority() -> str:
     return urlsplit(get_public_origin()).netloc
 
 
+def get_cf_access_team_domain() -> str | None:
+    """Return the Cloudflare Access team origin without a trailing slash."""
+    value = os.getenv("CF_ACCESS_TEAM_DOMAIN", "").strip()
+    return value.rstrip("/") or None
+
+
+def get_cf_access_aud() -> str | None:
+    """Return the Cloudflare Access application audience."""
+    return os.getenv("CF_ACCESS_AUD", "").strip() or None
+
+
+def get_secret_key() -> str | None:
+    """Return the secret used to sign admin CSRF tokens."""
+    return os.getenv("SECRET_KEY", "") or None
+
+
+def get_admin_dev_email() -> str | None:
+    """Return the optional local-only administrator email."""
+    return os.getenv("ADMIN_DEV_EMAIL", "").strip() or None
+
+
 def _rate_limit(
     prefix: str, default_requests: int, default_window_seconds: float
 ) -> tuple[int, float]:

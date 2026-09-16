@@ -9,6 +9,7 @@ dependencies = [
     "fastapi",
     "jinja2",
     "pillow",
+    "pyjwt[crypto]>=2.14.0",
     "sqlalchemy",
     "uvicorn",
 ]

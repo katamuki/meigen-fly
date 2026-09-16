@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{% block title %}管理画面{% endblock %} | 名言集.com</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/tokens.74bc89e2.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/admin.1f3a8c2d.css') }}">
+  </head>
+  <body>
+    <header class="admin-header">
+      <a class="admin-title" href="/admin">名言集.com 管理</a>
+      <div class="admin-account">
+        <span>{{ admin_email }}</span>
+        <a href="/cdn-cgi/access/logout">ログアウト</a>
+      </div>
+    </header>
+    <main class="admin-main">
+      {% if notice %}<p class="admin-notice" role="status">{{ notice }}</p>{% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

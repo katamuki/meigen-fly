@@ -307,7 +307,7 @@ meigen-fly/
 - ランキングは旧式を同値移植する。計算式の正本は[inventory-4 §6.4](database/inventory-4-new-db-design.md)
 - `/login`は`/admin`へ302。`/403`ページは作らない。ローカル開発だけの認証迂回`ADMIN_DEV_EMAIL`を設ける（ADR 012「実装方針」）
 
-- [ ] 4-A 管理基盤: Cloudflare Access JWTの最小限の検証（署名・issuer・audience・期限・email）+ CSRF + 管理レイアウト + `/login` + 操作ログ（D3/ADR 012）
+- [x] 4-A 管理基盤: Cloudflare Access JWTの最小限の検証（署名・issuer・audience・期限・email）+ CSRF + 管理レイアウト + `/login` + 操作ログ（D3/ADR 012）（2026-09-16）
 - [ ] 4-B ランキング再計算（CLI + 管理画面のボタン。D6/ADR 005）+ Cloudflareパージの共通処理（ADR 014）
 - [ ] 4-C 名言・著者のCRUD（パージ連携を含む。slugの追加・変更時は、エッジで1日キャッシュされる`/quotes/q{id}`の301もパージ対象に含める。[URL契約表](url-contract.md)§6）
 - [ ] 4-D その他マスタのCRUD（categories / characters / sources / professions。source_types・countriesはフォームの選択肢）

@@ -166,6 +166,7 @@ def test_admin_accepts_valid_assertion_and_shows_dashboard(admin_client) -> None
     assert "ログアウト" in response.text
     assert '<meta name="robots" content="noindex, nofollow">' in response.text
     assert "components.85b1abc0.css" not in response.text
+    assert "admin.aa5c32f4.css" in response.text
     assert "htmx" not in response.text.lower()
 
 
@@ -188,6 +189,12 @@ def test_admin_rejects_missing_required_configuration(
 ) -> None:
     client, _private_key = admin_client
     monkeypatch.delenv("SECRET_KEY")
+    assert _get_admin(client).status_code == 403
+
+
+def test_admin_rejects_invalid_team_domain(admin_client, monkeypatch) -> None:
+    client, _private_key = admin_client
+    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "https://example.com")
     assert _get_admin(client).status_code == 403
 
 

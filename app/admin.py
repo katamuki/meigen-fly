@@ -65,8 +65,11 @@ def require_admin(request: Request) -> str:
     if dev_email is not None:
         return dev_email
 
-    team_domain = get_cf_access_team_domain()
-    audience = get_cf_access_aud()
+    try:
+        team_domain = get_cf_access_team_domain()
+        audience = get_cf_access_aud()
+    except ValueError:
+        _forbidden("required configuration invalid")
     if not team_domain or not audience or not get_secret_key():
         _forbidden("required configuration missing")
 

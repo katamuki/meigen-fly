@@ -60,7 +60,32 @@ def get_public_authority() -> str:
 def get_cf_access_team_domain() -> str | None:
     """Return the Cloudflare Access team origin without a trailing slash."""
     value = os.getenv("CF_ACCESS_TEAM_DOMAIN", "").strip()
-    return value.rstrip("/") or None
+    if not value:
+        return None
+    value = value.rstrip("/")
+    parsed = urlsplit(value)
+    hostname = parsed.hostname or ""
+    suffix = ".cloudflareaccess.com"
+    team = hostname.removesuffix(suffix)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc.lower() != hostname
+        or not team
+        or not hostname.endswith(suffix)
+        or team.startswith("-")
+        or team.endswith("-")
+        or not all(
+            character.isascii() and (character.isalnum() or character == "-")
+            for character in team
+        )
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(
+            "CF_ACCESS_TEAM_DOMAIN must be https://<team>.cloudflareaccess.com"
+        )
+    return f"https://{hostname}"
 
 
 def get_cf_access_aud() -> str | None:

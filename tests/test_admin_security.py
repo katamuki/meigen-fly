@@ -2,11 +2,13 @@ import asyncio
 from datetime import UTC, datetime
 
 import pytest
+from fastapi import HTTPException
 from starlette.requests import Request
 
 from app.admin import (
     CSRF_MAX_AGE_SECONDS,
     issue_csrf_token,
+    log_admin_operation,
     read_urlencoded_form,
     require_csrf,
     validate_csrf_token,
@@ -30,9 +32,20 @@ def test_csrf_token_validation(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_csrf_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SECRET_KEY", "test-secret")
 
-    with pytest.raises(Exception) as missing:
+    with pytest.raises(HTTPException) as missing:
         require_csrf({}, EMAIL)
     assert missing.value.status_code == 403
+
+
+def test_local_authentication_bypass_does_not_bypass_csrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_DEV_EMAIL", EMAIL)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+    with pytest.raises(HTTPException) as invalid:
+        require_csrf({"csrf_token": ["anything"]}, EMAIL)
+    assert invalid.value.status_code == 403
 
 
 def _request(body: bytes, content_type: str) -> Request:
@@ -70,11 +83,11 @@ def test_urlencoded_form_preserves_multiple_values() -> None:
 
 
 def test_urlencoded_form_rejects_content_type_size_and_malformed_data() -> None:
-    with pytest.raises(Exception) as content_type:
+    with pytest.raises(HTTPException) as content_type:
         asyncio.run(read_urlencoded_form(_request(b"a=1", "application/json")))
     assert content_type.value.status_code == 415
 
-    with pytest.raises(Exception) as too_large:
+    with pytest.raises(HTTPException) as too_large:
         asyncio.run(
             read_urlencoded_form(
                 _request(b"a=1234", "application/x-www-form-urlencoded"),
@@ -83,7 +96,7 @@ def test_urlencoded_form_rejects_content_type_size_and_malformed_data() -> None:
         )
     assert too_large.value.status_code == 413
 
-    with pytest.raises(Exception) as malformed:
+    with pytest.raises(HTTPException) as malformed:
         asyncio.run(
             read_urlencoded_form(
                 _request(b"name=%ZZ", "application/x-www-form-urlencoded")
@@ -93,8 +106,6 @@ def test_urlencoded_form_rejects_content_type_size_and_malformed_data() -> None:
 
 
 def test_admin_operation_log_is_one_line(caplog: pytest.LogCaptureFixture) -> None:
-    from app.admin import log_admin_operation
-
     with caplog.at_level("INFO", logger="app.admin"):
         log_admin_operation(
             "admin@example.com\nignored",

@@ -7,6 +7,7 @@ import re
 import time
 from datetime import UTC, datetime
 from functools import lru_cache
+from json import JSONDecodeError
 from urllib.parse import parse_qs, urlsplit
 
 import jwt
@@ -19,7 +20,7 @@ from jwt.exceptions import (
     InvalidSignatureError,
     InvalidTokenError,
     MissingRequiredClaimError,
-    PyJWKClientError,
+    PyJWTError,
 )
 
 from app.config import (
@@ -79,10 +80,10 @@ def require_admin(request: Request) -> str:
 
     try:
         signing_key = _get_jwk_client(team_domain).get_signing_key_from_jwt(token)
-    except PyJWKClientError:
-        _forbidden("signing key retrieval failed")
     except InvalidTokenError:
         _forbidden("signature invalid")
+    except PyJWTError, JSONDecodeError, UnicodeDecodeError:
+        _forbidden("signing key retrieval failed")
 
     try:
         claims = jwt.decode(

@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from json import JSONDecodeError
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,7 +9,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from jwt.exceptions import PyJWKClientError
+from jwt.exceptions import PyJWKClientError, PyJWKSetError
 
 from app import admin
 from app.admin import require_admin
@@ -196,18 +197,38 @@ def test_admin_accepts_valid_assertion_and_shows_dashboard(admin_client) -> None
     assert "htmx" not in response.text.lower()
 
 
-def test_admin_rejects_signing_key_failure(admin_client, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "error",
+    [
+        PyJWKClientError("offline"),
+        PyJWKSetError("no usable keys"),
+        JSONDecodeError("invalid JSON", "not-json", 0),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid byte"),
+    ],
+)
+def test_admin_rejects_signing_key_failure(
+    admin_client,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    error: Exception,
+) -> None:
     client, private_key = admin_client
+    token = _token(private_key)
 
     def fail(_token):
-        raise PyJWKClientError("offline")
+        raise error
 
     monkeypatch.setattr(
         admin,
         "_get_jwk_client",
         lambda _domain: SimpleNamespace(get_signing_key_from_jwt=fail),
     )
-    assert _get_admin(client, _token(private_key)).status_code == 403
+    with caplog.at_level("WARNING", logger="app.admin"):
+        response = _get_admin(client, token)
+
+    assert response.status_code == 403
+    assert "admin authentication rejected: signing key retrieval failed" in caplog.text
+    assert token not in caplog.text
 
 
 def test_admin_rejects_missing_required_configuration(

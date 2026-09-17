@@ -34,6 +34,16 @@ a { color: var(--accent); }
 .admin-stats dd { margin: var(--sp-2) 0 0; font-size: var(--fs-display); font-weight: 700; }
 .admin-menu { margin-top: var(--sp-6); }
 .admin-notice { border-color: var(--accent-soft); }
+.admin-menu button {
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
 @media (max-width: 640px) {
   .admin-header { align-items: flex-start; flex-direction: column; }
   .admin-stats { grid-template-columns: 1fr; }

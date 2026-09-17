@@ -93,6 +93,16 @@ def get_cf_access_aud() -> str | None:
     return os.getenv("CF_ACCESS_AUD", "").strip() or None
 
 
+def get_cf_zone_id() -> str | None:
+    """Return the Cloudflare zone used for cache purges."""
+    return os.getenv("CF_ZONE_ID", "").strip() or None
+
+
+def get_cf_api_token() -> str | None:
+    """Return the Cloudflare API token used for cache purges."""
+    return os.getenv("CF_API_TOKEN", "").strip() or None
+
+
 def get_secret_key() -> str | None:
     """Return the secret used to sign admin CSRF tokens."""
     return os.getenv("SECRET_KEY", "") or None

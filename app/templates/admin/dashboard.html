@@ -20,6 +20,11 @@
   </dl>
   <section class="admin-menu" aria-labelledby="admin-menu-title">
     <h2 id="admin-menu-title">管理機能</h2>
-    <p>現在利用できる管理機能はダッシュボードのみです。</p>
+    <h3>ランキング</h3>
+    <p>最終再計算: {{ ranking_refreshed_at or "未実行" }}</p>
+    <form action="/admin/rankings/refresh" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">ランキングを再計算</button>
+    </form>
   </section>
 {% endblock %}

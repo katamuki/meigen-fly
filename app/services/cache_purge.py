@@ -4,6 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
+from http.client import HTTPException as HTTPClientException
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -88,6 +89,7 @@ def purge_cache(paths: list[str]) -> CachePurgeResult:
             return CachePurgeResult(CachePurgeStatus.FAILED, urls, detail)
         except (
             URLError,
+            HTTPClientException,
             json.JSONDecodeError,
             UnicodeDecodeError,
             OSError,

@@ -1,4 +1,5 @@
 import json
+from http.client import IncompleteRead
 from io import BytesIO
 from urllib.error import HTTPError
 
@@ -93,6 +94,24 @@ def test_timeout_is_logged_and_returned(monkeypatch, caplog) -> None:
     assert result.status is CachePurgeStatus.FAILED
     assert "timed out" in result.detail
     assert "timed out" in caplog.text
+
+
+def test_incomplete_response_is_logged_and_returned(monkeypatch, caplog) -> None:
+    class IncompleteResponse(Response):
+        def read(self) -> bytes:
+            raise IncompleteRead(b'{"success":', 4)
+
+    monkeypatch.setattr(
+        cache_purge,
+        "urlopen",
+        lambda *_args, **_kwargs: IncompleteResponse({"success": True}),
+    )
+    with caplog.at_level("ERROR", logger="app.services.cache_purge"):
+        result = purge_cache(["/"])
+
+    assert result.status is CachePurgeStatus.FAILED
+    assert "IncompleteRead" in result.detail
+    assert "Cloudflare cache purge failed" in caplog.text
 
 
 def test_success_false_is_logged_and_returned(monkeypatch, caplog) -> None:

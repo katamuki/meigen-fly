@@ -288,6 +288,9 @@ def test_author_validation_errors_redisplay_input(
     assert response.status_code == 422
     assert "作成した著者" in response.text
     assert message in response.text
+    if message == "重複しない":
+        assert 'name="profession_order_1" value="1"' in response.text
+        assert 'name="profession_order_2" value="1"' in response.text
 
 
 def test_author_duplicate_slug_is_form_error(admin_author_client) -> None:
@@ -295,16 +298,39 @@ def test_author_duplicate_slug_is_form_error(admin_author_client) -> None:
     with engine.begin() as connection:
         connection.execute(
             insert(authors),
-            {
-                "name": "既存",
-                "slug": "duplicate",
-                "created_at": INSTANT,
-                "updated_at": INSTANT,
-            },
+            [
+                {
+                    "id": 40,
+                    "name": "既存",
+                    "slug": "duplicate",
+                    "created_at": INSTANT,
+                    "updated_at": INSTANT,
+                },
+                {
+                    "id": 41,
+                    "name": "更新対象",
+                    "slug": "update-target",
+                    "created_at": INSTANT,
+                    "updated_at": INSTANT,
+                },
+            ],
         )
     response = client.post("/admin/authors", data=_author_form(slug="duplicate"))
+    update_response = client.post(
+        "/admin/authors/41", data=_author_form(slug="duplicate")
+    )
     assert response.status_code == 422
-    assert "重複" in response.text
+    assert "このslugは既に使われています" in response.text
+    assert update_response.status_code == 422
+    assert "このslugは既に使われています" in update_response.text
+
+
+def test_author_reserved_public_route_slug_is_rejected(admin_author_client) -> None:
+    client, _engine = admin_author_client
+    response = client.post("/admin/authors", data=_author_form(slug="places"))
+
+    assert response.status_code == 422
+    assert "公開ページ用に予約" in response.text
 
 
 def test_author_posts_require_csrf(admin_author_client) -> None:

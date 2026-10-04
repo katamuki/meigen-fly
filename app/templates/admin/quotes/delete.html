@@ -10,7 +10,8 @@
     <dl>
       <dt>ID</dt><dd>{{ quote.id }}</dd>
       <dt>同時に削除されるカテゴリ関連</dt><dd>{{ category_count }}件</dd>
-      <dt>同時に削除されるいいね・ランキング</dt><dd>DBの関連件数（自動削除）</dd>
+      <dt>同時に削除されるいいね</dt><dd>{{ like_count }}件</dd>
+      <dt>ランキングsnapshot</dt><dd>存在する場合は自動削除</dd>
     </dl>
     <form action="/admin/quotes/{{ quote.id }}/delete" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

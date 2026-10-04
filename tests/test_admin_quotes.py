@@ -15,6 +15,7 @@ from app.schema import (
     categories,
     characters,
     quote_categories,
+    quote_likes,
     quotes,
     sources,
 )
@@ -326,6 +327,17 @@ def test_quote_slug_format_error_redisplays_values(
     assert "slug" in response.text
 
 
+@pytest.mark.parametrize("slug", ["latest", "page"])
+def test_quote_reserved_public_route_slug_is_rejected(
+    admin_quote_client, slug: str
+) -> None:
+    client, _engine = admin_quote_client
+    response = client.post("/admin/quotes", data=_quote_form(slug=slug))
+
+    assert response.status_code == 422
+    assert "公開ページ用に予約" in response.text
+
+
 def test_quote_duplicate_slug_and_level_one_category_are_form_errors(
     admin_quote_client,
 ) -> None:
@@ -333,21 +345,36 @@ def test_quote_duplicate_slug_and_level_one_category_are_form_errors(
     with engine.begin() as connection:
         connection.execute(
             insert(quotes),
-            {
-                "text": "既存",
-                "slug": "duplicate",
-                "created_at": INSTANT,
-                "updated_at": INSTANT,
-            },
+            [
+                {
+                    "id": 40,
+                    "text": "既存",
+                    "slug": "duplicate",
+                    "created_at": INSTANT,
+                    "updated_at": INSTANT,
+                },
+                {
+                    "id": 41,
+                    "text": "更新対象",
+                    "slug": "update-target",
+                    "created_at": INSTANT,
+                    "updated_at": INSTANT,
+                },
+            ],
         )
 
     duplicate = client.post("/admin/quotes", data=_quote_form(slug="duplicate"))
+    duplicate_update = client.post(
+        "/admin/quotes/41", data=_quote_form(slug="duplicate")
+    )
     invalid_category = client.post(
         "/admin/quotes", data=_quote_form(slug="valid", category_ids="1")
     )
 
     assert duplicate.status_code == 422
-    assert "重複" in duplicate.text
+    assert "このslugは既に使われています" in duplicate.text
+    assert duplicate_update.status_code == 422
+    assert "このslugは既に使われています" in duplicate_update.text
     assert invalid_category.status_code == 422
     assert "level 2" in invalid_category.text
 
@@ -376,10 +403,27 @@ def test_quote_delete_confirmation_and_delete(
             },
         )
         connection.execute(insert(quote_categories), {"quote_id": 20, "category_id": 2})
+        connection.execute(
+            insert(quote_likes),
+            [
+                {
+                    "quote_id": 20,
+                    "client_uuid": "00000000-0000-0000-0000-000000000001",
+                    "created_at": INSTANT,
+                },
+                {
+                    "quote_id": 20,
+                    "client_uuid": "00000000-0000-0000-0000-000000000002",
+                    "created_at": INSTANT,
+                },
+            ],
+        )
     confirmation = client.get("/admin/quotes/20/delete")
     assert confirmation.status_code == 200
     assert "カテゴリ関連" in confirmation.text
     assert "1件" in confirmation.text
+    assert "同時に削除されるいいね" in confirmation.text
+    assert "2件" in confirmation.text
 
     observed = {}
 

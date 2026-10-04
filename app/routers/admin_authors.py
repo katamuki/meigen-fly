@@ -43,6 +43,7 @@ router = APIRouter(prefix="/admin/authors", dependencies=[Depends(require_admin)
 PER_PAGE = 20
 _SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _DATE_PATTERN = re.compile(r"([0-9]{4})-([0-9]{2})-([0-9]{2})\Z")
+_RESERVED_SLUGS = {"places"}
 
 
 class AuthorForm(BaseModel):
@@ -81,6 +82,8 @@ class AuthorForm(BaseModel):
             raise ValueError("著者名を入力してください。")
         if not self.slug or not _SLUG_PATTERN.fullmatch(self.slug):
             raise ValueError("slugは小文字の英数字とハイフンで入力してください。")
+        if self.slug in _RESERVED_SLUGS:
+            raise ValueError("placesは公開ページ用に予約されています。")
         _validate_life_date("生年月日", self.birth_date, self.birth_precision)
         _validate_life_date("没年月日", self.death_date, self.death_precision)
         if self.birth_date and self.death_date:
@@ -174,9 +177,7 @@ def _profession_ids(form: dict[str, list[str]]) -> list[str]:
     return [profession_id for _order, profession_id in sorted(ordered)]
 
 
-def _author_input(form: dict[str, list[str]]) -> dict:
-    if len(form.get("birth_country_id", [])) > 1:
-        raise ValueError("生誕国は1件だけ指定してください。")
+def _author_input_values(form: dict[str, list[str]]) -> dict:
     return {
         "name": _one(form, "name"),
         "slug": _one(form, "slug"),
@@ -191,10 +192,22 @@ def _author_input(form: dict[str, list[str]]) -> dict:
         "death_date": _nullable(_one(form, "death_date")),
         "death_era": _one(form, "death_era", "ad"),
         "death_precision": _one(form, "death_precision", "unknown"),
-        "profession_ids": _profession_ids(form),
+        "profession_ids": form.get("profession_ids", []),
         "country_ids": form.get("country_ids", []),
         "birth_country_id": _nullable(_one(form, "birth_country_id")),
+        "_profession_orders": {
+            _int_or_none(profession_id): _one(form, f"profession_order_{profession_id}")
+            for profession_id in form.get("profession_ids", [])
+            if _int_or_none(profession_id) is not None
+        },
     }
+
+
+def _parse_author_input(form: dict[str, list[str]], values: dict) -> AuthorForm:
+    if len(form.get("birth_country_id", [])) > 1:
+        raise ValueError("生誕国は1件だけ指定してください。")
+    values["profession_ids"] = _profession_ids(form)
+    return AuthorForm.model_validate(values)
 
 
 def _error_message(error: ValidationError) -> str:
@@ -282,6 +295,15 @@ def _validate_references(connection: Connection, data: AuthorForm) -> str | None
         if valid_countries != set(data.country_ids):
             return "選択した国が見つかりません。"
     return None
+
+
+def _slug_exists(
+    connection: Connection, slug: str, *, excluding_id: int | None = None
+) -> bool:
+    query = select(authors.c.id).where(authors.c.slug == slug)
+    if excluding_id is not None:
+        query = query.where(authors.c.id != excluding_id)
+    return connection.execute(query).first() is not None
 
 
 def _load_author_snapshot(connection: Connection, author_id: int) -> dict | None:
@@ -526,12 +548,10 @@ async def author_create(
 ) -> Response:
     form = await read_urlencoded_form(request)
     require_csrf(form, admin_email)
+    raw = _author_input_values(form)
     try:
-        raw = _author_input(form)
-        data = AuthorForm.model_validate(raw)
+        data = _parse_author_input(form, raw)
     except ValueError as error:
-        if "raw" not in locals():
-            raw = _author_input_without_professions(form)
         message = (
             _error_message(error) if isinstance(error, ValidationError) else str(error)
         )
@@ -540,6 +560,14 @@ async def author_create(
     if reference_error:
         return _author_form_error(
             request, admin_email, connection, data.model_dump(), reference_error
+        )
+    if _slug_exists(connection, data.slug):
+        return _author_form_error(
+            request,
+            admin_email,
+            connection,
+            data.model_dump(),
+            "このslugは既に使われています。",
         )
     now = datetime.now(UTC)
     try:
@@ -563,33 +591,6 @@ async def author_create(
     return RedirectResponse(
         f"/admin/authors?{urlencode({'notice': notice})}", status_code=303
     )
-
-
-def _author_input_without_professions(form: dict[str, list[str]]) -> dict:
-    raw = {
-        "name": _one(form, "name"),
-        "slug": _one(form, "slug"),
-        "description": _nullable(_one(form, "description")),
-        "image_url": _nullable(_one(form, "image_url")),
-        "name_kana": _nullable(_one(form, "name_kana")),
-        "name_foreign": _nullable(_one(form, "name_foreign")),
-        "name_reading": _nullable(_one(form, "name_reading")),
-        "birth_date": _nullable(_one(form, "birth_date")),
-        "birth_era": _one(form, "birth_era", "ad"),
-        "birth_precision": _one(form, "birth_precision", "unknown"),
-        "death_date": _nullable(_one(form, "death_date")),
-        "death_era": _one(form, "death_era", "ad"),
-        "death_precision": _one(form, "death_precision", "unknown"),
-        "profession_ids": form.get("profession_ids", []),
-        "country_ids": form.get("country_ids", []),
-        "birth_country_id": _nullable(_one(form, "birth_country_id")),
-        "_profession_orders": {
-            _int_or_none(profession_id): _one(form, f"profession_order_{profession_id}")
-            for profession_id in form.get("profession_ids", [])
-            if _int_or_none(profession_id) is not None
-        },
-    }
-    return raw
 
 
 @router.get("/{author_id}/edit", response_class=HTMLResponse)
@@ -624,12 +625,10 @@ async def author_update(
     old = _load_author_snapshot(connection, author_id)
     if old is None:
         raise HTTPException(status_code=404, detail="著者が見つかりません")
+    raw = _author_input_values(form)
     try:
-        raw = _author_input(form)
-        data = AuthorForm.model_validate(raw)
+        data = _parse_author_input(form, raw)
     except ValueError as error:
-        if "raw" not in locals():
-            raw = _author_input_without_professions(form)
         message = (
             _error_message(error) if isinstance(error, ValidationError) else str(error)
         )
@@ -644,6 +643,15 @@ async def author_update(
             connection,
             data.model_dump(),
             reference_error,
+            author_id,
+        )
+    if _slug_exists(connection, data.slug, excluding_id=author_id):
+        return _author_form_error(
+            request,
+            admin_email,
+            connection,
+            data.model_dump(),
+            "このslugは既に使われています。",
             author_id,
         )
     now = datetime.now(UTC)

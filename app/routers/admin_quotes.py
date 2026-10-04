@@ -28,6 +28,7 @@ from app.schema import (
     categories,
     characters,
     quote_categories,
+    quote_likes,
     quotes,
     sources,
 )
@@ -43,6 +44,7 @@ PER_PAGE = 20
 _SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _STRICT_QID_PATTERN = re.compile(r"q[1-9][0-9]*\Z")
 _FOUR_DIGIT_PATTERN = re.compile(r"[0-9]{4}\Z")
+_RESERVED_SLUGS = {"latest", "page"}
 
 
 class QuoteForm(BaseModel):
@@ -75,6 +77,8 @@ class QuoteForm(BaseModel):
                 )
             if _FOUR_DIGIT_PATTERN.fullmatch(self.slug):
                 raise ValueError("4桁の数字だけのslugは旧URL用に予約されています。")
+            if self.slug in _RESERVED_SLUGS:
+                raise ValueError("latestとpageは公開ページ用に予約されています。")
         if not self.text and not self.text_en:
             raise ValueError("日本語本文または英語本文のどちらかを入力してください。")
         self.category_ids = list(dict.fromkeys(self.category_ids))
@@ -218,6 +222,17 @@ def _validate_references(connection: Connection, data: QuoteForm) -> str | None:
         if valid != set(data.category_ids):
             return "カテゴリにはlevel 2だけを選択してください。"
     return None
+
+
+def _slug_exists(
+    connection: Connection, slug: str | None, *, excluding_id: int | None = None
+) -> bool:
+    if slug is None:
+        return False
+    query = select(quotes.c.id).where(quotes.c.slug == slug)
+    if excluding_id is not None:
+        query = query.where(quotes.c.id != excluding_id)
+    return connection.execute(query).first() is not None
 
 
 def _load_quote_snapshot(connection: Connection, quote_id: int) -> dict | None:
@@ -412,6 +427,19 @@ async def quote_create(
             ),
             status_code=422,
         )
+    if _slug_exists(connection, data.slug):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/quotes/form.html",
+            context=_form_context(
+                request,
+                admin_email,
+                connection,
+                values=data.model_dump(),
+                error="このslugは既に使われています。",
+            ),
+            status_code=422,
+        )
     now = datetime.now(UTC)
     values = data.model_dump(exclude={"category_ids"})
     values.update(created_at=format_instant(now), updated_at=format_instant(now))
@@ -521,6 +549,20 @@ async def quote_update(
             ),
             status_code=422,
         )
+    if _slug_exists(connection, data.slug, excluding_id=quote_id):
+        return templates.TemplateResponse(
+            request=request,
+            name="admin/quotes/form.html",
+            context=_form_context(
+                request,
+                admin_email,
+                connection,
+                values=data.model_dump(),
+                quote_id=quote_id,
+                error="このslugは既に使われています。",
+            ),
+            status_code=422,
+        )
     now = datetime.now(UTC)
     values = data.model_dump(exclude={"category_ids"})
     values["updated_at"] = format_instant(now)
@@ -578,6 +620,11 @@ def quote_delete_confirm(
         .select_from(quote_categories)
         .where(quote_categories.c.quote_id == quote_id)
     ).scalar_one()
+    like_count = connection.execute(
+        select(func.count())
+        .select_from(quote_likes)
+        .where(quote_likes.c.quote_id == quote_id)
+    ).scalar_one()
     return templates.TemplateResponse(
         request=request,
         name="admin/quotes/delete.html",
@@ -586,6 +633,7 @@ def quote_delete_confirm(
             "csrf_token": issue_csrf_token(admin_email),
             "quote": row,
             "category_count": category_count,
+            "like_count": like_count,
         },
     )
 

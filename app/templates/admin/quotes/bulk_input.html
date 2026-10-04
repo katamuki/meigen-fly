@@ -1,0 +1,80 @@
+{% extends "admin/base.html" %}
+
+{% block title %}名言の一括登録{% endblock %}
+
+{% block content %}
+  <h1>名言の一括登録</h1>
+  <p>1行1件、本文・英文・重みをタブで区切って入力してください。空行は無視します。</p>
+  {% if errors %}
+    <div class="admin-error" role="alert">
+      <p>入力内容を確認してください。</p>
+      <ul>
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  <form class="admin-form" action="/admin/quotes/bulk/confirm" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="admin-form-grid admin-form-grid--three">
+      <label>
+        著者
+        <select name="author_id">
+          <option value="">未選択</option>
+          {% for author in authors %}
+            <option value="{{ author.id }}" {% if selected_author_id == author.id %}selected{% endif %}>{{ author.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        出典
+        <select name="source_id">
+          <option value="">未選択</option>
+          {% for source in sources %}
+            <option value="{{ source.id }}" {% if selected_source_id == source.id %}selected{% endif %}>{{ source.title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        登場人物
+        <select name="character_id">
+          <option value="">未選択</option>
+          {% for character in characters %}
+            <option value="{{ character.id }}" {% if selected_character_id == character.id %}selected{% endif %}>{{ character.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+    </div>
+    <div class="admin-form-grid admin-form-grid--three">
+      <label>
+        既定の重み
+        <select name="weight">
+          {% for weight in range(1, 11) %}
+            <option value="{{ weight }}" {% if values.weight|string == weight|string %}selected{% endif %}>{{ weight }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        表示言語
+        <select name="display_language_preference">
+          <option value="ja" {% if values.display_language_preference == "ja" %}selected{% endif %}>日本語優先</option>
+          <option value="en" {% if values.display_language_preference == "en" %}selected{% endif %}>英語優先</option>
+        </select>
+      </label>
+      <label class="admin-check">
+        <input type="checkbox" name="enable" value="1" {% if values.enable == "1" %}checked{% endif %}>
+        公開状態で登録する
+      </label>
+    </div>
+    <label>
+      名言（最大{{ max_entries }}件）
+      <textarea name="bulk_input" rows="16" required placeholder="日本語本文&#9;English text&#9;5">{{ values.bulk_input }}</textarea>
+    </label>
+    <p>英文と行ごとの重みは省略できます。行ごとの重みを省略すると既定の重みを使います。slugは設定しません。</p>
+    <div class="admin-form-actions">
+      <a href="/admin/quotes">一覧へ戻る</a>
+      <button type="submit">確認に進む</button>
+    </div>
+  </form>
+{% endblock %}

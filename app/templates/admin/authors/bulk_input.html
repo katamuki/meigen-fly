@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+
+{% block title %}著者の一括登録{% endblock %}
+
+{% block content %}
+  <h1>著者の一括登録</h1>
+  <p>著者オブジェクトを1〜{{ max_entries }}件含むJSON配列を入力してください。職業と国は登録済みの名称で指定します。</p>
+  {% if errors %}
+    <div class="admin-error" role="alert">
+      <p>入力内容を確認してください。</p>
+      <ul>
+        {% for error in errors %}
+          <li>{{ error }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  <form class="admin-form" action="/admin/authors/bulk/confirm" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      著者JSON
+      <textarea name="json_input" rows="24" required placeholder='[{"name":"夏目 漱石","slug":"natsume-soseki","professions":["小説家"],"countries":["日本"],"birth_country":"日本"}]'>{{ json_input }}</textarea>
+    </label>
+    <p>必須項目は name と slug です。任意項目は説明、画像URL、各種表記、生没年、職業、国、生誕国です。</p>
+    <div class="admin-form-actions">
+      <a href="/admin/authors">一覧へ戻る</a>
+      <button type="submit">確認に進む</button>
+    </div>
+  </form>
+{% endblock %}

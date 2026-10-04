@@ -1,0 +1,45 @@
+{% extends "admin/base.html" %}
+
+{% block title %}著者一括登録の確認{% endblock %}
+
+{% block content %}
+  <h1>著者一括登録の確認</h1>
+  <p>{{ entries|length }}件を登録します。警告は登録を止めません。</p>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr><th>件</th><th>名前</th><th>slug</th><th>職業</th><th>国（生誕国）</th><th>警告</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+          <tr>
+            <td>{{ entry.number }}</td>
+            <td>{{ entry.data.name }}</td>
+            <td>{{ entry.data.slug }}</td>
+            <td>{{ entry.profession_names|join("、") or "—" }}</td>
+            <td>{{ entry.country_names|join("、") or "—" }}{% if entry.birth_country_name %}（{{ entry.birth_country_name }}）{% endif %}</td>
+            <td>
+              {% if entry.warnings %}
+                <ul>
+                  {% for warning in entry.warnings %}
+                    <li>{{ warning }}</li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form class="admin-form" action="/admin/authors/bulk" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="json_input" value="{{ json_input }}">
+    <div class="admin-form-actions">
+      <a href="/admin/authors/bulk">入力画面へ戻る</a>
+      <button type="submit">この内容で登録</button>
+    </div>
+  </form>
+{% endblock %}

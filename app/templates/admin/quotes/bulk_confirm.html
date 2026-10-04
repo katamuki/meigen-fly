@@ -1,0 +1,45 @@
+{% extends "admin/base.html" %}
+
+{% block title %}名言一括登録の確認{% endblock %}
+
+{% block content %}
+  <h1>名言一括登録の確認</h1>
+  <p>{{ entries|length }}件を登録します。内容を確認してください。</p>
+  <dl class="admin-stats">
+    <div><dt>著者ID</dt><dd>{{ values.author_id or "未選択" }}</dd></div>
+    <div><dt>出典ID</dt><dd>{{ values.source_id or "未選択" }}</dd></div>
+    <div><dt>登場人物ID</dt><dd>{{ values.character_id or "未選択" }}</dd></div>
+  </dl>
+  <p>既定の重み: {{ values.weight }} / {{ "公開" if values.enable == "1" else "非公開" }} / {{ "英語優先" if values.display_language_preference == "en" else "日本語優先" }}</p>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead>
+        <tr><th>行</th><th>本文</th><th>英文</th><th>重み</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in entries %}
+          <tr>
+            <td>{{ entry.line }}</td>
+            <td>{{ entry.data.text }}</td>
+            <td>{{ entry.data.text_en or "—" }}</td>
+            <td>{{ entry.data.weight }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form class="admin-form" action="/admin/quotes/bulk" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="bulk_input" value="{{ values.bulk_input }}">
+    <input type="hidden" name="author_id" value="{{ values.author_id }}">
+    <input type="hidden" name="source_id" value="{{ values.source_id }}">
+    <input type="hidden" name="character_id" value="{{ values.character_id }}">
+    <input type="hidden" name="weight" value="{{ values.weight }}">
+    <input type="hidden" name="enable" value="{{ values.enable }}">
+    <input type="hidden" name="display_language_preference" value="{{ values.display_language_preference }}">
+    <div class="admin-form-actions">
+      <a href="/admin/quotes/bulk">入力画面へ戻る</a>
+      <button type="submit">この内容で登録</button>
+    </div>
+  </form>
+{% endblock %}

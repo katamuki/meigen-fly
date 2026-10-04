@@ -3,7 +3,7 @@
 import re
 from datetime import UTC, datetime
 from math import ceil
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -67,7 +67,7 @@ class SourceForm(BaseModel):
         return self
 
 
-def _input(form):
+def _input(form: dict[str, list[str]]) -> dict[str, object]:
     return {
         "title": one(form, "title"),
         "slug": one(form, "slug"),
@@ -78,7 +78,7 @@ def _input(form):
     }
 
 
-def _error(error):
+def _error(error: ValidationError) -> str:
     custom = error.errors()[0].get("ctx", {}).get("error")
     if custom:
         return str(custom)
@@ -89,7 +89,7 @@ def _error(error):
     }.get(str(error.errors()[0]["loc"][-1]), "入力内容を確認してください。")
 
 
-def _snapshot(connection, source_id):
+def _snapshot(connection: Connection, source_id: int) -> dict[str, Any] | None:
     row = (
         connection.execute(
             select(sources, authors.c.slug.label("author_slug"))
@@ -130,7 +130,15 @@ def _snapshot(connection, source_id):
     return result
 
 
-def _context(request, email, connection, *, values, source_id=None, error=None):
+def _context(
+    request: Request,
+    email: str,
+    connection: Connection,
+    *,
+    values: dict[str, Any],
+    source_id: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
     selected = {
         parsed
         for value in values.get("type_ids", [])
@@ -162,14 +170,16 @@ def _context(request, email, connection, *, values, source_id=None, error=None):
     }
 
 
-def _slug_exists(connection, slug, excluding_id=None):
+def _slug_exists(
+    connection: Connection, slug: str, excluding_id: int | None = None
+) -> bool:
     query = select(sources.c.id).where(sources.c.slug == slug)
     if excluding_id is not None:
         query = query.where(sources.c.id != excluding_id)
     return connection.execute(query).first() is not None
 
 
-def _reference_error(connection, data):
+def _reference_error(connection: Connection, data: SourceForm) -> str | None:
     if (
         data.author_id is not None
         and connection.execute(
@@ -189,7 +199,12 @@ def _reference_error(connection, data):
     return None
 
 
-def _write_types(connection, source_id, type_ids, now):
+def _write_types(
+    connection: Connection,
+    source_id: int,
+    type_ids: list[int],
+    now: datetime,
+) -> None:
     if type_ids:
         connection.execute(
             insert(source_type_assignments),
@@ -204,7 +219,7 @@ def _write_types(connection, source_id, type_ids, now):
         )
 
 
-def _paths(old, new):
+def _paths(old: dict[str, Any] | None, new: dict[str, Any] | None) -> list[str]:
     paths = {"/sources", "/sitemap.xml"}
     for item in (old, new):
         if item:
@@ -218,7 +233,14 @@ def _paths(old, new):
     return sorted(paths)
 
 
-def _form_error(request, email, connection, values, message, source_id=None):
+def _form_error(
+    request: Request,
+    email: str,
+    connection: Connection,
+    values: dict[str, Any],
+    message: str,
+    source_id: int | None = None,
+) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin/sources/form.html",

@@ -3,7 +3,7 @@
 import re
 from datetime import UTC, datetime
 from math import ceil
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -58,7 +58,7 @@ class CharacterForm(BaseModel):
         return self
 
 
-def _input(form):
+def _input(form: dict[str, list[str]]) -> dict[str, object]:
     return {
         "name": one(form, "name"),
         "slug": one(form, "slug"),
@@ -68,7 +68,7 @@ def _input(form):
     }
 
 
-def _error(error):
+def _error(error: ValidationError) -> str:
     custom = error.errors()[0].get("ctx", {}).get("error")
     if custom:
         return str(custom)
@@ -78,7 +78,7 @@ def _error(error):
     }.get(str(error.errors()[0]["loc"][-1]), "入力内容を確認してください。")
 
 
-def _snapshot(connection, character_id):
+def _snapshot(connection: Connection, character_id: int) -> dict[str, Any] | None:
     row = (
         connection.execute(
             select(characters, sources.c.slug.label("source_slug"))
@@ -93,7 +93,15 @@ def _snapshot(connection, character_id):
     return dict(row) if row else None
 
 
-def _context(request, email, connection, *, values, character_id=None, error=None):
+def _context(
+    request: Request,
+    email: str,
+    connection: Connection,
+    *,
+    values: dict[str, Any],
+    character_id: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
     return {
         "request": request,
         "admin_email": email,
@@ -112,14 +120,16 @@ def _context(request, email, connection, *, values, character_id=None, error=Non
     }
 
 
-def _slug_exists(connection, slug, excluding_id=None):
+def _slug_exists(
+    connection: Connection, slug: str, excluding_id: int | None = None
+) -> bool:
     query = select(characters.c.id).where(characters.c.slug == slug)
     if excluding_id is not None:
         query = query.where(characters.c.id != excluding_id)
     return connection.execute(query).first() is not None
 
 
-def _reference_error(connection, data):
+def _reference_error(connection: Connection, data: CharacterForm) -> str | None:
     if (
         data.source_id is not None
         and connection.execute(
@@ -131,7 +141,7 @@ def _reference_error(connection, data):
     return None
 
 
-def _paths(old, new):
+def _paths(old: dict[str, Any] | None, new: dict[str, Any] | None) -> list[str]:
     paths = {"/characters"}
     for item in (old, new):
         if item:
@@ -141,7 +151,14 @@ def _paths(old, new):
     return sorted(paths)
 
 
-def _form_error(request, email, connection, values, message, character_id=None):
+def _form_error(
+    request: Request,
+    email: str,
+    connection: Connection,
+    values: dict[str, Any],
+    message: str,
+    character_id: int | None = None,
+) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin/characters/form.html",

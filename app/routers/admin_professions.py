@@ -2,7 +2,8 @@
 
 import re
 from datetime import UTC, datetime
-from typing import Annotated
+from math import ceil
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -26,13 +27,14 @@ from app.admin import (
 from app.db import get_connection
 from app.instants import format_instant
 from app.routers.admin import templates
-from app.schema import author_professions, authors, professions
+from app.schema import author_professions, professions
 from app.services.cache_purge import purge_cache
 
 AdminEmail = Annotated[str, Depends(require_admin)]
 ConnectionDependency = Annotated[Connection, Depends(get_connection)]
 Notice = Annotated[str | None, Query(max_length=200)]
 router = APIRouter(prefix="/admin/professions", dependencies=[Depends(require_admin)])
+PER_PAGE = 20
 SLUG_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
 
@@ -54,7 +56,7 @@ class ProfessionForm(BaseModel):
         return self
 
 
-def _input(form):
+def _input(form: dict[str, list[str]]) -> dict[str, object]:
     return {
         "name": one(form, "name"),
         "slug": one(form, "slug"),
@@ -63,7 +65,7 @@ def _input(form):
     }
 
 
-def _error(error):
+def _error(error: ValidationError) -> str:
     custom = error.errors()[0].get("ctx", {}).get("error")
     if custom:
         return str(custom)
@@ -72,89 +74,65 @@ def _error(error):
     return "入力内容を確認してください。"
 
 
-def _snapshot(connection, profession_id):
+def _snapshot(connection: Connection, profession_id: int) -> dict[str, Any] | None:
     row = (
         connection.execute(select(professions).where(professions.c.id == profession_id))
         .mappings()
         .one_or_none()
     )
-    if row is None:
-        return None
-    result = dict(row)
-    result["author_slugs"] = list(
-        connection.execute(
-            select(authors.c.slug)
-            .select_from(
-                author_professions.join(
-                    authors, authors.c.id == author_professions.c.author_id
-                )
-            )
-            .where(author_professions.c.profession_id == profession_id)
-        ).scalars()
-    )
-    return result
+    return dict(row) if row is not None else None
 
 
-def _duplicate(connection, field, value, excluding_id=None):
+def _duplicate(
+    connection: Connection,
+    field: Any,
+    value: str,
+    excluding_id: int | None = None,
+) -> bool:
     query = select(professions.c.id).where(field == value)
     if excluding_id is not None:
         query = query.where(professions.c.id != excluding_id)
     return connection.execute(query).first() is not None
 
 
-def _paths(old, new):
+def _paths(old: dict[str, Any] | None, new: dict[str, Any] | None) -> list[str]:
     paths = {"/professions"}
     for item in (old, new):
         if item:
             paths.add(f"/professions/{item['slug']}")
-            paths.update(f"/authors/{slug}" for slug in item["author_slugs"])
     return sorted(paths)
 
 
-def _list_context(
-    request, email, connection, *, notice=None, error=None, values=None, editing_id=None
-):
-    rows = list(
-        connection.execute(
-            select(
-                professions,
-                func.count(author_professions.c.author_id).label("author_count"),
-            )
-            .select_from(
-                professions.outerjoin(
-                    author_professions,
-                    author_professions.c.profession_id == professions.c.id,
-                )
-            )
-            .group_by(professions.c.id)
-            .order_by(professions.c.display_order, professions.c.id)
-        ).mappings()
-    )
-    defaults = {"name": "", "slug": "", "description": None, "display_order": 0}
+def _form_context(
+    request: Request,
+    email: str,
+    *,
+    values: dict[str, object],
+    profession_id: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
     return {
         "request": request,
         "admin_email": email,
         "csrf_token": issue_csrf_token(email),
-        "rows": rows,
-        "notice": notice,
+        "values": values,
+        "profession_id": profession_id,
         "error": error,
-        "create_values": values if editing_id is None and values else defaults,
-        "edit_values": values if editing_id is not None else None,
-        "editing_id": editing_id,
     }
 
 
-def _form_error(request, email, connection, values, message, editing_id=None):
+def _form_error(
+    request: Request,
+    email: str,
+    values: dict[str, object],
+    message: str,
+    profession_id: int | None = None,
+) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
-        name="admin/professions/list.html",
-        context=_list_context(
-            request,
-            email,
-            connection,
-            error=message,
-            values=values,
-            editing_id=editing_id,
+        name="admin/professions/form.html",
+        context=_form_context(
+            request, email, values=values, profession_id=profession_id, error=message
         ),
         status_code=422,
     )
@@ -165,12 +143,66 @@ def profession_list(
     request: Request,
     admin_email: AdminEmail,
     connection: ConnectionDependency,
+    q: Annotated[str, Query(max_length=200)] = "",
+    page: Annotated[int, Query(ge=1)] = 1,
     notice: Notice = None,
 ) -> HTMLResponse:
+    term = q.strip()
+    conditions = [professions.c.name.contains(term, autoescape=True)] if term else []
+    total = connection.execute(
+        select(func.count()).select_from(professions).where(*conditions)
+    ).scalar_one()
+    total_pages = max(1, ceil(total / PER_PAGE))
+    rows = connection.execute(
+        select(
+            professions,
+            func.count(author_professions.c.author_id).label("author_count"),
+        )
+        .select_from(
+            professions.outerjoin(
+                author_professions,
+                author_professions.c.profession_id == professions.c.id,
+            )
+        )
+        .where(*conditions)
+        .group_by(professions.c.id)
+        .order_by(professions.c.display_order, professions.c.id)
+        .limit(PER_PAGE)
+        .offset((page - 1) * PER_PAGE)
+    ).mappings()
+    query_base = {"q": term} if term else {}
     return templates.TemplateResponse(
         request=request,
         name="admin/professions/list.html",
-        context=_list_context(request, admin_email, connection, notice=notice),
+        context={
+            "request": request,
+            "admin_email": admin_email,
+            "rows": rows,
+            "q": term,
+            "page": page,
+            "total": total,
+            "previous_url": (
+                f"/admin/professions?{urlencode({**query_base, 'page': page - 1})}"
+                if page > 1
+                else None
+            ),
+            "next_url": (
+                f"/admin/professions?{urlencode({**query_base, 'page': page + 1})}"
+                if page < total_pages
+                else None
+            ),
+            "notice": notice,
+        },
+    )
+
+
+@router.get("/new", response_class=HTMLResponse)
+def profession_new(request: Request, admin_email: AdminEmail) -> HTMLResponse:
+    values = {"name": "", "slug": "", "description": None, "display_order": 0}
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/professions/form.html",
+        context=_form_context(request, admin_email, values=values),
     )
 
 
@@ -184,12 +216,11 @@ async def profession_create(
     try:
         data = ProfessionForm.model_validate(raw)
     except ValidationError as error:
-        return _form_error(request, admin_email, connection, raw, _error(error))
+        return _form_error(request, admin_email, raw, _error(error))
     if _duplicate(connection, professions.c.name, data.name):
         return _form_error(
             request,
             admin_email,
-            connection,
             data.model_dump(),
             "この名称は既に使われています。",
         )
@@ -197,7 +228,6 @@ async def profession_create(
         return _form_error(
             request,
             admin_email,
-            connection,
             data.model_dump(),
             "このslugは既に使われています。",
         )
@@ -213,7 +243,6 @@ async def profession_create(
         return _form_error(
             request,
             admin_email,
-            connection,
             data.model_dump(),
             "名称またはslugの重複、入力内容の制約違反があります。",
         )
@@ -223,6 +252,26 @@ async def profession_create(
     notice = purge_notice("職業", "作成", _paths(None, new), purger=purge_cache)
     return RedirectResponse(
         f"/admin/professions?{urlencode({'notice': notice})}", status_code=303
+    )
+
+
+@router.get("/{profession_id}/edit", response_class=HTMLResponse)
+def profession_edit(
+    profession_id: int,
+    request: Request,
+    admin_email: AdminEmail,
+    connection: ConnectionDependency,
+) -> HTMLResponse:
+    row = _snapshot(connection, profession_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="職業が見つかりません")
+    values = {key: row[key] for key in ProfessionForm.model_fields}
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/professions/form.html",
+        context=_form_context(
+            request, admin_email, values=values, profession_id=profession_id
+        ),
     )
 
 
@@ -242,14 +291,11 @@ async def profession_update(
     try:
         data = ProfessionForm.model_validate(raw)
     except ValidationError as error:
-        return _form_error(
-            request, admin_email, connection, raw, _error(error), profession_id
-        )
+        return _form_error(request, admin_email, raw, _error(error), profession_id)
     if _duplicate(connection, professions.c.name, data.name, profession_id):
         return _form_error(
             request,
             admin_email,
-            connection,
             data.model_dump(),
             "この名称は既に使われています。",
             profession_id,
@@ -258,7 +304,6 @@ async def profession_update(
         return _form_error(
             request,
             admin_email,
-            connection,
             data.model_dump(),
             "このslugは既に使われています。",
             profession_id,
@@ -277,7 +322,6 @@ async def profession_update(
         return _form_error(
             request,
             admin_email,
-            connection,
             data.model_dump(),
             "名称またはslugの重複、入力内容の制約違反があります。",
             profession_id,

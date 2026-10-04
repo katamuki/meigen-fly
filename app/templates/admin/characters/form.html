@@ -1,1 +1,31 @@
-{% extends "admin/base.html" %}{% block title %}{{ "登場人物編集" if character_id else "登場人物追加" }}{% endblock %}{% block content %}<h1>{{ "登場人物編集" if character_id else "登場人物追加" }}</h1>{% if error %}<p class="admin-error" role="alert">{{ error }}</p>{% endif %}<form class="admin-form" action="{{ '/admin/characters/' ~ character_id if character_id else '/admin/characters' }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="admin-form-grid"><label>名前<input name="name" value="{{ values.name }}" required></label><label>slug<input name="slug" value="{{ values.slug }}" pattern="[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*" required></label><label>種別<select name="character_type">{% for value, label in [("character", "登場人物"), ("narrator", "語り手"), ("author_voice", "著者の声")] %}<option value="{{ value }}"{% if values.character_type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label>出典<select name="source_id"><option value="">未設定</option>{% for item in sources %}<option value="{{ item.id }}"{% if selected_source_id == item.id %} selected{% endif %}>{{ item.title }}</option>{% endfor %}</select></label></div><label>説明<textarea name="description" rows="6">{{ values.description or "" }}</textarea></label><div class="admin-form-actions"><button type="submit">保存</button><a href="/admin/characters">キャンセル</a></div></form>{% endblock %}
+{% extends "admin/base.html" %}
+
+{% block title %}{{ "登場人物編集" if character_id else "登場人物追加" }}{% endblock %}
+
+{% block content %}
+  <h1>{{ "登場人物編集" if character_id else "登場人物追加" }}</h1>
+  {% if error %}<p class="admin-error" role="alert">{{ error }}</p>{% endif %}
+  <form class="admin-form" action="{{ '/admin/characters/' ~ character_id if character_id else '/admin/characters' }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="admin-form-grid">
+      <label>名前<input name="name" value="{{ values.name }}" required></label>
+      <label>slug<input name="slug" value="{{ values.slug }}" pattern="[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*" required></label>
+      <label>種別
+        <select name="character_type">
+          {% for value, label in [("character", "登場人物"), ("narrator", "語り手"), ("author_voice", "著者の声")] %}<option value="{{ value }}"{% if values.character_type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>出典
+        <select name="source_id">
+          <option value="">未設定</option>
+          {% for item in sources %}<option value="{{ item.id }}"{% if selected_source_id == item.id %} selected{% endif %}>{{ item.title }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>説明<textarea name="description" rows="6">{{ values.description or "" }}</textarea></label>
+    <div class="admin-form-actions">
+      <button type="submit">保存</button>
+      <a href="/admin/characters">キャンセル</a>
+    </div>
+  </form>
+{% endblock %}

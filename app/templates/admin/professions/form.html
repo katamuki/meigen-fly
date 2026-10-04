@@ -1,0 +1,21 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ "職業編集" if profession_id else "職業追加" }}{% endblock %}
+
+{% block content %}
+  <h1>{{ "職業編集" if profession_id else "職業追加" }}</h1>
+  {% if error %}<p class="admin-error" role="alert">{{ error }}</p>{% endif %}
+  <form class="admin-form" action="{{ '/admin/professions/' ~ profession_id if profession_id else '/admin/professions' }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="admin-form-grid">
+      <label>名称<input name="name" value="{{ values.name }}" required></label>
+      <label>slug<input name="slug" value="{{ values.slug }}" pattern="[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*" required></label>
+      <label>表示順<input type="number" min="0" name="display_order" value="{{ values.display_order }}" required></label>
+    </div>
+    <label>説明<textarea name="description" rows="6">{{ values.description or "" }}</textarea></label>
+    <div class="admin-form-actions">
+      <button type="submit">保存</button>
+      <a href="/admin/professions">キャンセル</a>
+    </div>
+  </form>
+{% endblock %}

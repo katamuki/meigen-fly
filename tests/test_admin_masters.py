@@ -460,6 +460,7 @@ def test_profession_crud_unique_messages_commit_and_purge(
 ) -> None:
     client, engine = admin_master_client
     observed: list[set[str]] = []
+    assert client.get("/admin/professions/new").status_code == 200
     monkeypatch.setattr(
         admin_professions,
         "purge_cache",
@@ -485,6 +486,7 @@ def test_profession_crud_unique_messages_commit_and_purge(
     assert response.status_code == 303
     with engine.connect() as connection:
         row = connection.execute(select(professions)).mappings().one()
+    assert client.get(f"/admin/professions/{row['id']}/edit").status_code == 200
     assert observed[-1] == {"/professions", "/professions/writer"}
     response = client.post(
         "/admin/professions",
@@ -549,11 +551,11 @@ def test_profession_crud_unique_messages_commit_and_purge(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert {
+    assert observed[-1] == {
+        "/professions",
         "/professions/writer",
         "/professions/author-job",
-        "/authors/author",
-    } <= observed[-1]
+    }
     delete_page = client.get(f"/admin/professions/{row['id']}/delete")
     assert "関連が外れる著者</dt><dd>1件" in delete_page.text
     response = client.post(
@@ -562,6 +564,7 @@ def test_profession_crud_unique_messages_commit_and_purge(
         follow_redirects=False,
     )
     assert response.status_code == 303
+    assert observed[-1] == {"/professions", "/professions/author-job"}
     with engine.connect() as connection:
         assert (
             connection.execute(
@@ -570,6 +573,40 @@ def test_profession_crud_unique_messages_commit_and_purge(
             is None
         )
         assert connection.execute(select(author_professions)).first() is None
+
+
+def test_profession_list_searches_and_paginates(admin_master_client) -> None:
+    client, engine = admin_master_client
+    with engine.begin() as connection:
+        connection.execute(
+            insert(professions),
+            [
+                {
+                    "name": f"確認職業{number:02}",
+                    "slug": f"job-{number:02}",
+                    "display_order": number,
+                    "created_at": INSTANT,
+                    "updated_at": INSTANT,
+                }
+                for number in range(1, 22)
+            ],
+        )
+
+    first_page = client.get("/admin/professions")
+    assert first_page.status_code == 200
+    assert "21件" in first_page.text
+    assert "確認職業01" in first_page.text
+    assert "確認職業21" not in first_page.text
+    assert "/admin/professions?page=2" in first_page.text
+
+    second_page = client.get("/admin/professions?page=2")
+    assert second_page.status_code == 200
+    assert "確認職業21" in second_page.text
+
+    filtered = client.get("/admin/professions?q=確認職業21")
+    assert filtered.status_code == 200
+    assert "確認職業21" in filtered.text
+    assert "確認職業01" not in filtered.text
 
 
 @pytest.mark.parametrize(

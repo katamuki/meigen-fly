@@ -1,9 +1,10 @@
 """Category administration screens."""
 
 import re
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from math import ceil
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -65,7 +66,7 @@ class CategoryForm(BaseModel):
         return self
 
 
-def _input(form: dict[str, list[str]]) -> dict:
+def _input(form: dict[str, list[str]]) -> dict[str, object]:
     return {
         "name": one(form, "name"),
         "slug": one(form, "slug"),
@@ -89,7 +90,9 @@ def _error(error: ValidationError) -> str:
     }.get(field, "入力内容を確認してください。")
 
 
-def _parents(connection: Connection, excluding_id: int | None = None):
+def _parents(
+    connection: Connection, excluding_id: int | None = None
+) -> list[Mapping[str, Any]]:
     query = select(categories.c.id, categories.c.name).where(categories.c.level == 1)
     if excluding_id is not None:
         query = query.where(categories.c.id != excluding_id)
@@ -100,7 +103,15 @@ def _parents(connection: Connection, excluding_id: int | None = None):
     )
 
 
-def _context(request, email, connection, *, values, category_id=None, error=None):
+def _context(
+    request: Request,
+    email: str,
+    connection: Connection,
+    *,
+    values: dict[str, Any],
+    category_id: int | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
     return {
         "request": request,
         "admin_email": email,
@@ -113,7 +124,7 @@ def _context(request, email, connection, *, values, category_id=None, error=None
     }
 
 
-def _snapshot(connection: Connection, category_id: int) -> dict | None:
+def _snapshot(connection: Connection, category_id: int) -> dict[str, Any] | None:
     parent = categories.alias("parent")
     row = (
         connection.execute(
@@ -137,14 +148,21 @@ def _snapshot(connection: Connection, category_id: int) -> dict | None:
     return result
 
 
-def _slug_exists(connection, slug, excluding_id=None):
+def _slug_exists(
+    connection: Connection, slug: str, excluding_id: int | None = None
+) -> bool:
     query = select(categories.c.id).where(categories.c.slug == slug)
     if excluding_id is not None:
         query = query.where(categories.c.id != excluding_id)
     return connection.execute(query).first() is not None
 
 
-def _hierarchy_error(connection, data: CategoryForm, category_id=None, old=None):
+def _hierarchy_error(
+    connection: Connection,
+    data: CategoryForm,
+    category_id: int | None = None,
+    old: dict[str, Any] | None = None,
+) -> str | None:
     if data.level == 2:
         if category_id is not None and data.parent_id == category_id:
             return "level 2カテゴリ自身を親には指定できません。"
@@ -171,7 +189,7 @@ def _hierarchy_error(connection, data: CategoryForm, category_id=None, old=None)
     return None
 
 
-def _paths(old, new):
+def _paths(old: dict[str, Any] | None, new: dict[str, Any] | None) -> list[str]:
     paths = {"/categories", "/sitemap.xml"}
     for snapshot in (old, new):
         if snapshot:
@@ -184,7 +202,14 @@ def _paths(old, new):
     return sorted(paths)
 
 
-def _form_error(request, email, connection, values, message, category_id=None):
+def _form_error(
+    request: Request,
+    email: str,
+    connection: Connection,
+    values: dict[str, Any],
+    message: str,
+    category_id: int | None = None,
+) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="admin/categories/form.html",
@@ -425,7 +450,14 @@ async def category_update(
     )
 
 
-def _delete_context(request, email, row, quote_count, child_count, error=None):
+def _delete_context(
+    request: Request,
+    email: str,
+    row: dict[str, Any],
+    quote_count: int,
+    child_count: int,
+    error: str | None = None,
+) -> dict[str, Any]:
     return {
         "request": request,
         "admin_email": email,

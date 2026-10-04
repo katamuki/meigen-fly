@@ -1,1 +1,42 @@
-{% extends "admin/base.html" %}{% block title %}職業管理{% endblock %}{% block content %}<h1>職業管理</h1>{% if error %}<p class="admin-error" role="alert">{{ error }}</p>{% endif %}<section><h2>職業を追加</h2><form class="admin-form" action="/admin/professions" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><div class="admin-form-grid"><label>名称<input name="name" value="{{ create_values.name }}" required></label><label>slug<input name="slug" value="{{ create_values.slug }}" pattern="[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*" required></label><label>表示順<input type="number" min="0" name="display_order" value="{{ create_values.display_order }}" required></label></div><label>説明<textarea name="description" rows="3">{{ create_values.description or "" }}</textarea></label><button type="submit">追加</button></form></section><div class="admin-related-list">{% for item in rows %}{% set current = edit_values if editing_id == item.id else item %}<form class="admin-form" action="/admin/professions/{{ item.id }}" method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><h2>{{ item.name }}（関連著者 {{ item.author_count }}件）</h2><div class="admin-form-grid"><label>名称<input name="name" value="{{ current.name }}" required></label><label>slug<input name="slug" value="{{ current.slug }}" required></label><label>表示順<input type="number" min="0" name="display_order" value="{{ current.display_order }}" required></label></div><label>説明<textarea name="description" rows="3">{{ current.description or "" }}</textarea></label><div class="admin-form-actions"><button type="submit">保存</button><a class="admin-danger-link" href="/admin/professions/{{ item.id }}/delete">削除</a></div></form>{% else %}<p>職業はありません。</p>{% endfor %}</div>{% endblock %}
+{% extends "admin/base.html" %}
+
+{% block title %}職業管理{% endblock %}
+
+{% block content %}
+  <div class="admin-heading">
+    <div><h1>職業管理</h1><p>{{ total|comma }}件</p></div>
+    <a class="admin-button" href="/admin/professions/new">職業を追加</a>
+  </div>
+  <form class="admin-search" action="/admin/professions" method="get">
+    <label for="profession-search">名称</label>
+    <input id="profession-search" name="q" value="{{ q }}">
+    <button type="submit">絞り込む</button>
+  </form>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead><tr><th>ID</th><th>名称</th><th>slug</th><th>表示順</th><th>著者</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for item in rows %}
+          <tr>
+            <td>{{ item.id }}</td>
+            <td>{{ item.name }}</td>
+            <td>{{ item.slug }}</td>
+            <td>{{ item.display_order }}</td>
+            <td>{{ item.author_count }}件</td>
+            <td class="admin-actions">
+              <a href="/admin/professions/{{ item.id }}/edit">編集</a>
+              <a class="admin-danger-link" href="/admin/professions/{{ item.id }}/delete">削除</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6">該当する職業はありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <nav class="admin-pagination" aria-label="ページ移動">
+    {% if previous_url %}<a href="{{ previous_url }}">前へ</a>{% endif %}
+    <span>{{ page }}ページ</span>
+    {% if next_url %}<a href="{{ next_url }}">次へ</a>{% endif %}
+  </nav>
+{% endblock %}

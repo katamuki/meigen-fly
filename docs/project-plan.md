@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-09-17（フェーズ4-B完了）
+> - 更新日: 2026-10-04（フェーズ4完了）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -299,7 +299,7 @@ meigen-fly/
 
 ### フェーズ4: 管理画面
 
-5回のセッション（4-A〜4-E）に分割する。各回の作業指示は[`docs/next-session.md`](next-session.md)。
+5回のセッション（4-A〜4-E）に分けて実装し、2026-10-04に完了した。実装で確定したURL規則は[URL契約表](url-contract.md)、キャッシュ更新範囲は[ADR 014](decisions/014-cache-purge-boundaries.md)を正本とする。
 
 **着手時の決定（2026-09-13）**:
 - 依存は`pyjwt[crypto]`だけを追加する。管理画面の入力はURLエンコードのフォームに限り、`python-multipart`は入れない。CSRF tokenは標準`hmac`、パージ要求は標準`urllib.request`で作る（[ADR 012](decisions/012-admin-auth-cloudflare-access.md)「実装方針」）
@@ -309,16 +309,23 @@ meigen-fly/
 
 - [x] 4-A 管理基盤: Cloudflare Access JWTの最小限の検証（署名・issuer・audience・期限・email）+ CSRF + 管理レイアウト + `/login` + 操作ログ（D3/ADR 012）（2026-09-16）
 - [x] 4-B ランキング再計算（CLI + 管理画面のボタン。D6/ADR 005）+ Cloudflareパージの共通処理（ADR 014）（2026-09-17）
-- [x] 4-C 名言・著者のCRUD（パージ連携を含む。slugの追加・変更時は、エッジで1日キャッシュされる`/quotes/q{id}`の301もパージ対象に含める。[URL契約表](url-contract.md)§6）（2026-10-04）
+- [x] 4-C 名言・著者のCRUD（[ADR 014](decisions/014-cache-purge-boundaries.md)のパージ連携を含む）（2026-10-04）
 - [x] 4-D その他マスタのCRUD（categories / characters / sources / professions。source_types・countriesはフォームの選択肢）（2026-10-04）
 - [x] 4-E 一括登録（quotes: タブ区切り / authors: JSON）（2026-10-04）
+
+**実装で確定した範囲**:
+
+- 名言一括登録は最大500件のタブ区切り、著者一括登録は1〜10件のJSON配列を受け、どちらも確認後に全件を1 transactionで登録する。著者JSONの未知のキーは拒否し、同名著者は登録を止めず警告する
+- 旧著者一括登録の`{"authors": [...]}`包装、署名付き検証token、検証専用API、rate limit、警告確認check、手動rollbackは移植せず、JSON配列、CSRF付きSSRフォーム、登録時の再検証、SQLite transactionへ置き換えた
+- 旧`PUT /api/admin/quotes`は編集保存経路と重複し、`quotes/context-note-preview`はMarkdown preview専用だったため移植しなかった。countriesは既存値を著者フォームで選ぶ用途に限り、専用管理画面を作らなかった
+- 旧APIのうち移行・初期設定専用の`create-admin-user`・`setup-migration`・`migrate-professions`・`seed-categories`は移植しなかった
 
 ### フェーズ5: デプロイ・インフラ
 - [ ] Dockerfile / fly.toml / ボリューム
 - [ ] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`と`fontconfig`を入れ、ビルド時に選ばれたフォントファイルとフェイス名まで検査する。Debianの`fonts-noto-cjk`にSemiBoldが無ければ`FONT_CANDIDATES`の順でBoldが選ばれ、デザインの600とずれる。`fonts-noto-cjk-extra`を入れるかBoldで許容するかを決める
 - [ ] Uvicornのアクセスログ設定: 既定ではqueryを含むリクエスト行が出るため、queryと送信元IPを通常ログへ残さない設定にする（ADR 015。プライバシーポリシーの「IPと検索語を通常ログへ保存しない」の前提。Tunnel経由の転送ヘッダーでIPが出るかも確かめる）
 - [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）
-- [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeout・成功時Heartbeat（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）
+- [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeoutを設定し、transaction成功後・cache purge前に成功Heartbeatを送る（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
 - [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）。Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`もキャッシュ対象にし、`meigensyu.com`→`www.meigensyu.com`のhost正規化もここで設定する
 - [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）
@@ -329,11 +336,13 @@ meigen-fly/
 ### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
 - [ ] HTMLエラーページの要否を判断する。現状は404・429などがFastAPI既定のJSONを返す（3-Dからの持ち越し）
 - [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する（[URL契約表](url-contract.md)§9）
+- [ ] 旧ランキングとの一度限りの同値確認を行う。旧定期再計算（`0 3,15 * * *`、UTC）の直後に原本ダンプと旧3表（`quote_ranking_scores`・`author_rankings`・`category_rankings`）を読み取り専用で取得し、Git管理外の`meigen-fly-private/source-db/`へ保存する。SQLiteを再構築して旧`refreshed_at`を`now`に再計算し、score・likes件数・rankを比較する（浮動小数は相対誤差）。4-B時点では旧3表のexportがなく、取得時刻も定期再計算直後ではなかったため未実施
 - [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する
 - [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する
 - [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_TEAM_DOMAIN`・`CF_ACCESS_AUD`・`SECRET_KEY`・`CF_ZONE_ID`・`CF_API_TOKEN`を設定し、`ADMIN_DEV_EMAIL`が設定されていないことを確認する
 - [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮）
 - [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する
+- [ ] 本物のCloudflare Accessで許可・拒否とJWT検証を確認し、管理更新とランキング再計算から本物のCloudflare purge APIが呼ばれて更新内容が反映されることを確認する
 - [ ] プライバシーポリシーの記述（通常ログにIP・検索語を残さない、管理画面の認証、サーバーへの直接アクセス防止）が本番の設定と一致することを確認する
 - [ ] Tunnel経由の正常性確認後、Flyのpublic service/IPを削除する
 - [ ] 旧環境1〜2週間維持後に廃止
@@ -366,5 +375,5 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ4（管理画面）を4-Aから順に実施する。作業指示は[`docs/next-session.md`](next-session.md)
-2. `data/app.db`は`scripts/rebuild_sqlite.sh`で本番相当データから再構築できる
+1. フェーズ5（デプロイ・インフラ）のチェックリストを上から実施する
+2. フェーズ5完了後、フェーズ6の最終移行と本番リリースを行う

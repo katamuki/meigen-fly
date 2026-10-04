@@ -33,6 +33,13 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 | `q{id}` の非厳密形（`Q1`・`q01`・`q0`・空） | slugとして解決を試み、無ければ404 |
 | 非公開（`enable = 0`）・存在しないID | 404 |
 
+### 管理画面でのslug入力
+
+- slugは入力時に小文字化し、小文字英数字をハイフンでつないだ形に限る。
+- 名言では厳密な`q{id}`、4桁数字、`latest`、`page`を予約し、slugとして受け付けない。名言ID・旧URL・固定routeとの解決競合を防ぐためである。
+- 著者では`places`を固定route用に予約する。
+- categories、characters、sources、professionsの各prefixには競合する固定routeがないため、追加の予約語を設けない。
+
 - `q{id}` の厳密parseは `app/services/quotes.py:parse_qid`（先頭が`1-9`の十進数のみ）。
 - canonicalパスの組み立ては `quote_path()` 一箇所。sitemap・OG画像URL・リダイレクト先はすべてこれを使う。
 
@@ -103,7 +110,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 
 - `//` または `/\` で始まるパスはどのリダイレクト規則にも掛けず、そのまま routing へ渡す（結果は404）。`//evil.example/page/1` から `//evil.example` という protocol-relative なLocationを組み立てないため。
 - **301・308**の恒久リダイレクト（末尾スラッシュの除去を含む）は `public, s-maxage=86400, max-age=3600`（`app/middleware.py`）。
-- DBを引く301（`/quotes/q{id}`→slug、`/quotes/{4桁数字}`、`/quotations/view/{id}.html`）も同じく1日キャッシュされる。slugを追加・変更したときは `/quotes/q{id}` もパージ対象に含める（ADR 014の「旧新の詳細URL」の一部として扱う）。旧形式の2つはTTL待ちを許容する。
+- DBを引く301（`/quotes/q{id}`→slug、`/quotes/{4桁数字}`、`/quotations/view/{id}.html`）も同じく1日キャッシュされる。管理更新時のパージ境界は[ADR 014](decisions/014-cache-purge-boundaries.md)を正本とする。
 - `/search`・`/search/` 配下は他の規則より先に `private, no-store` になるため、`/search/quotations` の301はキャッシュされない。
 
 ## 7. sitemap と robots

@@ -30,6 +30,7 @@ from app.config import (
     get_public_origin,
     get_secret_key,
 )
+from app.services.cache_purge import CachePurgeStatus, purge_cache
 
 logger = logging.getLogger("app.admin")
 
@@ -207,3 +208,43 @@ def log_admin_operation(
         one_line(target),
         occurred_at.astimezone(UTC).isoformat(),
     )
+
+
+def one(form: dict[str, list[str]], name: str, default: str = "") -> str:
+    """Return one form value, falling back for missing or repeated values."""
+    values = form.get(name, [])
+    return values[0] if len(values) == 1 else default
+
+
+def nullable(value: str) -> str | None:
+    """Turn an empty form value into NULL."""
+    return value if value != "" else None
+
+
+def int_or_none(value: object) -> int | None:
+    """Parse an optional integer used while redisplaying forms."""
+    try:
+        return int(value) if value not in (None, "") else None
+    except TypeError, ValueError:
+        return None
+
+
+def optional_text(value: str | None) -> str | None:
+    """Trim optional user text, including Japanese full-width spaces."""
+    if value is None:
+        return None
+    stripped = value.strip(" \t\r\n\u3000")
+    return stripped or None
+
+
+def purge_notice(
+    entity: str, action: str, paths: list[str], *, purger=purge_cache
+) -> str:
+    """Purge committed admin changes and return the user-facing notice."""
+    result = purger(paths)
+    suffix = {
+        CachePurgeStatus.SUCCESS: "キャッシュパージ成功。",
+        CachePurgeStatus.FAILED: "キャッシュパージ失敗（TTL待ち）。",
+        CachePurgeStatus.SKIPPED: "キャッシュパージ未設定のためスキップ。",
+    }[result.status]
+    return f"{entity}を{action}しました。{suffix}"

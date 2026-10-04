@@ -14,8 +14,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
 from app.admin import (
+    int_or_none,
     issue_csrf_token,
     log_admin_operation,
+    nullable,
+    one,
+    optional_text,
+    purge_notice,
     read_urlencoded_form,
     require_admin,
     require_csrf,
@@ -32,7 +37,7 @@ from app.schema import (
     quotes,
     sources,
 )
-from app.services.cache_purge import CachePurgeStatus, purge_cache
+from app.services.cache_purge import purge_cache
 from app.services.quotes import quote_path
 
 AdminEmail = Annotated[str, Depends(require_admin)]
@@ -64,9 +69,9 @@ class QuoteForm(BaseModel):
     @model_validator(mode="after")
     def validate_content_and_slug(self) -> QuoteForm:
         self.text = self.text.strip()
-        self.text_en = _optional_text(self.text_en)
-        self.context_note = _optional_text(self.context_note)
-        self.slug = _optional_text(self.slug)
+        self.text_en = optional_text(self.text_en)
+        self.context_note = optional_text(self.context_note)
+        self.slug = optional_text(self.slug)
         if self.slug is not None:
             self.slug = self.slug.lower()
             if not _SLUG_PATTERN.fullmatch(self.slug):
@@ -85,42 +90,19 @@ class QuoteForm(BaseModel):
         return self
 
 
-def _optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    return stripped or None
-
-
-def _one(form: dict[str, list[str]], name: str, default: str = "") -> str:
-    values = form.get(name, [])
-    return values[0] if len(values) == 1 else default
-
-
-def _nullable(value: str) -> str | None:
-    return value if value != "" else None
-
-
-def _int_or_none(value: object) -> int | None:
-    try:
-        return int(value) if value not in (None, "") else None
-    except TypeError, ValueError:
-        return None
-
-
 def _quote_input(form: dict[str, list[str]]) -> dict:
     return {
-        "text": _one(form, "text"),
-        "text_en": _nullable(_one(form, "text_en")),
-        "author_id": _nullable(_one(form, "author_id")),
-        "source_id": _nullable(_one(form, "source_id")),
-        "character_id": _nullable(_one(form, "character_id")),
-        "weight": _one(form, "weight", "5"),
-        "slug": _nullable(_one(form, "slug")),
-        "enable": _one(form, "enable") == "1",
-        "context_note": _nullable(_one(form, "context_note")),
-        "display_language_preference": _one(form, "display_language_preference", "ja"),
-        "legacy_vote_count": _one(form, "legacy_vote_count", "0"),
+        "text": one(form, "text"),
+        "text_en": nullable(one(form, "text_en")),
+        "author_id": nullable(one(form, "author_id")),
+        "source_id": nullable(one(form, "source_id")),
+        "character_id": nullable(one(form, "character_id")),
+        "weight": one(form, "weight", "5"),
+        "slug": nullable(one(form, "slug")),
+        "enable": one(form, "enable") == "1",
+        "context_note": nullable(one(form, "context_note")),
+        "display_language_preference": one(form, "display_language_preference", "ja"),
+        "legacy_vote_count": one(form, "legacy_vote_count", "0"),
         "category_ids": form.get("category_ids", []),
     }
 
@@ -179,7 +161,7 @@ def _form_context(
     selected_categories = {
         parsed
         for value in values.get("category_ids", [])
-        if (parsed := _int_or_none(value)) is not None
+        if (parsed := int_or_none(value)) is not None
     }
     return {
         "request": request,
@@ -187,9 +169,9 @@ def _form_context(
         "csrf_token": issue_csrf_token(admin_email),
         "values": values,
         "selected_categories": selected_categories,
-        "selected_author_id": _int_or_none(values.get("author_id")),
-        "selected_source_id": _int_or_none(values.get("source_id")),
-        "selected_character_id": _int_or_none(values.get("character_id")),
+        "selected_author_id": int_or_none(values.get("author_id")),
+        "selected_source_id": int_or_none(values.get("source_id")),
+        "selected_character_id": int_or_none(values.get("character_id")),
         "quote_id": quote_id,
         "error": error,
         **_choices(connection),
@@ -290,16 +272,6 @@ def _quote_purge_paths(old: dict | None, new: dict | None, quote_id: int) -> lis
     if new is not None and old_slug != new_slug:
         paths.add(f"/quotes/q{quote_id}")
     return sorted(paths)
-
-
-def _purge_notice(action: str, paths: list[str]) -> str:
-    result = purge_cache(paths)
-    suffix = {
-        CachePurgeStatus.SUCCESS: "キャッシュパージ成功。",
-        CachePurgeStatus.FAILED: "キャッシュパージ失敗（TTL待ち）。",
-        CachePurgeStatus.SKIPPED: "キャッシュパージ未設定のためスキップ。",
-    }[result.status]
-    return f"名言を{action}しました。{suffix}"
 
 
 @router.get("", response_class=HTMLResponse)
@@ -472,7 +444,9 @@ async def quote_create(
     with connection.engine.connect() as read_connection:
         new = _load_quote_snapshot(read_connection, quote_id)
     log_admin_operation(admin_email, "create", f"quotes:{quote_id}", now=now)
-    notice = _purge_notice("作成", _quote_purge_paths(None, new, quote_id))
+    notice = purge_notice(
+        "名言", "作成", _quote_purge_paths(None, new, quote_id), purger=purge_cache
+    )
     return RedirectResponse(
         f"/admin/quotes?{urlencode({'notice': notice})}", status_code=303
     )
@@ -599,7 +573,9 @@ async def quote_update(
     with connection.engine.connect() as read_connection:
         new = _load_quote_snapshot(read_connection, quote_id)
     log_admin_operation(admin_email, "update", f"quotes:{quote_id}", now=now)
-    notice = _purge_notice("更新", _quote_purge_paths(old, new, quote_id))
+    notice = purge_notice(
+        "名言", "更新", _quote_purge_paths(old, new, quote_id), purger=purge_cache
+    )
     return RedirectResponse(
         f"/admin/quotes?{urlencode({'notice': notice})}", status_code=303
     )
@@ -654,7 +630,9 @@ async def quote_delete(
         write_connection.execute(delete(quotes).where(quotes.c.id == quote_id))
     now = datetime.now(UTC)
     log_admin_operation(admin_email, "delete", f"quotes:{quote_id}", now=now)
-    notice = _purge_notice("削除", _quote_purge_paths(old, None, quote_id))
+    notice = purge_notice(
+        "名言", "削除", _quote_purge_paths(old, None, quote_id), purger=purge_cache
+    )
     return RedirectResponse(
         f"/admin/quotes?{urlencode({'notice': notice})}", status_code=303
     )

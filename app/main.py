@@ -16,7 +16,11 @@ from app.middleware import (
 from app.routers.admin import login_router
 from app.routers.admin import router as admin_router
 from app.routers.admin_authors import router as admin_authors_router
+from app.routers.admin_categories import router as admin_categories_router
+from app.routers.admin_characters import router as admin_characters_router
+from app.routers.admin_professions import router as admin_professions_router
 from app.routers.admin_quotes import router as admin_quotes_router
+from app.routers.admin_sources import router as admin_sources_router
 from app.routers.public import router as public_router
 
 APP_DIR = Path(__file__).parent
@@ -40,6 +44,10 @@ app.include_router(public_router)
 app.include_router(admin_router)
 app.include_router(admin_quotes_router)
 app.include_router(admin_authors_router)
+app.include_router(admin_categories_router)
+app.include_router(admin_characters_router)
+app.include_router(admin_sources_router)
+app.include_router(admin_professions_router)
 app.include_router(login_router)
 
 

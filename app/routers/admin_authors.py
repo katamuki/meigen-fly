@@ -15,8 +15,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
 from app.admin import (
+    int_or_none,
     issue_csrf_token,
     log_admin_operation,
+    nullable,
+    one,
+    optional_text,
+    purge_notice,
     read_urlencoded_form,
     require_admin,
     require_csrf,
@@ -33,7 +38,7 @@ from app.schema import (
     quotes,
     sources,
 )
-from app.services.cache_purge import CachePurgeStatus, purge_cache
+from app.services.cache_purge import purge_cache
 
 AdminEmail = Annotated[str, Depends(require_admin)]
 ConnectionDependency = Annotated[Connection, Depends(get_connection)]
@@ -77,7 +82,7 @@ class AuthorForm(BaseModel):
             "birth_date",
             "death_date",
         ):
-            setattr(self, field, _optional_text(getattr(self, field)))
+            setattr(self, field, optional_text(getattr(self, field)))
         if not self.name:
             raise ValueError("著者名を入力してください。")
         if not self.slug or not _SLUG_PATTERN.fullmatch(self.slug):
@@ -103,13 +108,6 @@ class AuthorForm(BaseModel):
         ):
             raise ValueError("生誕国は選択した国の中から指定してください。")
         return self
-
-
-def _optional_text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip(" \t\r\n\u3000")
-    return stripped or None
 
 
 def _validate_life_date(label: str, value: str | None, precision: str) -> None:
@@ -144,28 +142,12 @@ def _date_interval(value: str, era: str, precision: str) -> tuple[tuple, tuple]:
     return point, point
 
 
-def _one(form: dict[str, list[str]], name: str, default: str = "") -> str:
-    values = form.get(name, [])
-    return values[0] if len(values) == 1 else default
-
-
-def _nullable(value: str) -> str | None:
-    return value if value != "" else None
-
-
-def _int_or_none(value: object) -> int | None:
-    try:
-        return int(value) if value not in (None, "") else None
-    except TypeError, ValueError:
-        return None
-
-
 def _profession_ids(form: dict[str, list[str]]) -> list[str]:
     ids = form.get("profession_ids", [])
     ordered: list[tuple[int, str]] = []
     used_orders: set[int] = set()
     for profession_id in ids:
-        order_text = _one(form, f"profession_order_{profession_id}")
+        order_text = one(form, f"profession_order_{profession_id}")
         try:
             order = int(order_text)
         except ValueError as error:
@@ -179,26 +161,26 @@ def _profession_ids(form: dict[str, list[str]]) -> list[str]:
 
 def _author_input_values(form: dict[str, list[str]]) -> dict:
     return {
-        "name": _one(form, "name"),
-        "slug": _one(form, "slug"),
-        "description": _nullable(_one(form, "description")),
-        "image_url": _nullable(_one(form, "image_url")),
-        "name_kana": _nullable(_one(form, "name_kana")),
-        "name_foreign": _nullable(_one(form, "name_foreign")),
-        "name_reading": _nullable(_one(form, "name_reading")),
-        "birth_date": _nullable(_one(form, "birth_date")),
-        "birth_era": _one(form, "birth_era", "ad"),
-        "birth_precision": _one(form, "birth_precision", "unknown"),
-        "death_date": _nullable(_one(form, "death_date")),
-        "death_era": _one(form, "death_era", "ad"),
-        "death_precision": _one(form, "death_precision", "unknown"),
+        "name": one(form, "name"),
+        "slug": one(form, "slug"),
+        "description": nullable(one(form, "description")),
+        "image_url": nullable(one(form, "image_url")),
+        "name_kana": nullable(one(form, "name_kana")),
+        "name_foreign": nullable(one(form, "name_foreign")),
+        "name_reading": nullable(one(form, "name_reading")),
+        "birth_date": nullable(one(form, "birth_date")),
+        "birth_era": one(form, "birth_era", "ad"),
+        "birth_precision": one(form, "birth_precision", "unknown"),
+        "death_date": nullable(one(form, "death_date")),
+        "death_era": one(form, "death_era", "ad"),
+        "death_precision": one(form, "death_precision", "unknown"),
         "profession_ids": form.get("profession_ids", []),
         "country_ids": form.get("country_ids", []),
-        "birth_country_id": _nullable(_one(form, "birth_country_id")),
+        "birth_country_id": nullable(one(form, "birth_country_id")),
         "_profession_orders": {
-            _int_or_none(profession_id): _one(form, f"profession_order_{profession_id}")
+            int_or_none(profession_id): one(form, f"profession_order_{profession_id}")
             for profession_id in form.get("profession_ids", [])
-            if _int_or_none(profession_id) is not None
+            if int_or_none(profession_id) is not None
         },
     }
 
@@ -248,12 +230,12 @@ def _form_context(
     profession_ids = [
         parsed
         for value in values.get("profession_ids", [])
-        if (parsed := _int_or_none(value)) is not None
+        if (parsed := int_or_none(value)) is not None
     ]
     country_ids = {
         parsed
         for value in values.get("country_ids", [])
-        if (parsed := _int_or_none(value)) is not None
+        if (parsed := int_or_none(value)) is not None
     }
     submitted_orders = values.get("_profession_orders", {})
     return {
@@ -268,7 +250,7 @@ def _form_context(
             for order, profession_id in enumerate(profession_ids, start=1)
         },
         "selected_countries": country_ids,
-        "selected_birth_country_id": _int_or_none(values.get("birth_country_id")),
+        "selected_birth_country_id": int_or_none(values.get("birth_country_id")),
         "author_id": author_id,
         "error": error,
         **_choices(connection),
@@ -368,16 +350,6 @@ def _author_purge_paths(old: dict | None, new: dict | None) -> list[str]:
         paths.update(f"/authors/places/{slug}" for slug in snapshot["country_slugs"])
         paths.update(f"/professions/{slug}" for slug in snapshot["profession_slugs"])
     return sorted(paths)
-
-
-def _purge_notice(action: str, paths: list[str]) -> str:
-    result = purge_cache(paths)
-    suffix = {
-        CachePurgeStatus.SUCCESS: "キャッシュパージ成功。",
-        CachePurgeStatus.FAILED: "キャッシュパージ失敗（TTL待ち）。",
-        CachePurgeStatus.SKIPPED: "キャッシュパージ未設定のためスキップ。",
-    }[result.status]
-    return f"著者を{action}しました。{suffix}"
 
 
 @router.get("", response_class=HTMLResponse)
@@ -587,7 +559,9 @@ async def author_create(
     with connection.engine.connect() as read_connection:
         new = _load_author_snapshot(read_connection, author_id)
     log_admin_operation(admin_email, "create", f"authors:{author_id}", now=now)
-    notice = _purge_notice("作成", _author_purge_paths(None, new))
+    notice = purge_notice(
+        "著者", "作成", _author_purge_paths(None, new), purger=purge_cache
+    )
     return RedirectResponse(
         f"/admin/authors?{urlencode({'notice': notice})}", status_code=303
     )
@@ -683,7 +657,9 @@ async def author_update(
     with connection.engine.connect() as read_connection:
         new = _load_author_snapshot(read_connection, author_id)
     log_admin_operation(admin_email, "update", f"authors:{author_id}", now=now)
-    notice = _purge_notice("更新", _author_purge_paths(old, new))
+    notice = purge_notice(
+        "著者", "更新", _author_purge_paths(old, new), purger=purge_cache
+    )
     return RedirectResponse(
         f"/admin/authors?{urlencode({'notice': notice})}", status_code=303
     )
@@ -736,7 +712,9 @@ async def author_delete(
         write_connection.execute(delete(authors).where(authors.c.id == author_id))
     now = datetime.now(UTC)
     log_admin_operation(admin_email, "delete", f"authors:{author_id}", now=now)
-    notice = _purge_notice("削除", _author_purge_paths(old, None))
+    notice = purge_notice(
+        "著者", "削除", _author_purge_paths(old, None), purger=purge_cache
+    )
     return RedirectResponse(
         f"/admin/authors?{urlencode({'notice': notice})}", status_code=303
     )

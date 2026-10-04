@@ -1,0 +1,20 @@
+{% extends "admin/base.html" %}
+
+{% block title %}著者削除{% endblock %}
+
+{% block content %}
+  <h1>著者を削除</h1>
+  <section class="admin-confirm">
+    <p>「{{ author.name }}」を削除します。この操作は取り消せません。</p>
+    <dl>
+      <dt>著者が外れる名言</dt><dd>{{ quote_count }}件</dd>
+      <dt>著者が外れる出典</dt><dd>{{ source_count }}件</dd>
+      <dt>同時に削除される職業・国の関連</dt><dd>{{ author.profession_ids|length + author.country_ids|length }}件</dd>
+    </dl>
+    <form action="/admin/authors/{{ author.id }}/delete" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="admin-danger" type="submit">削除する</button>
+      <a href="/admin/authors/{{ author.id }}/edit">戻る</a>
+    </form>
+  </section>
+{% endblock %}

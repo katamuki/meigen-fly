@@ -20,6 +20,10 @@
   </dl>
   <section class="admin-menu" aria-labelledby="admin-menu-title">
     <h2 id="admin-menu-title">管理機能</h2>
+    <ul class="admin-menu-list">
+      <li><a href="/admin/quotes">名言を管理</a></li>
+      <li><a href="/admin/authors">著者を管理</a></li>
+    </ul>
     <h3>ランキング</h3>
     <p>最終再計算: {{ ranking_refreshed_at or "未実行" }}</p>
     <form action="/admin/rankings/refresh" method="post">

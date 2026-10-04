@@ -1,0 +1,54 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ "著者編集" if author_id else "著者追加" }}{% endblock %}
+
+{% block content %}
+  <h1>{{ "著者編集" if author_id else "著者追加" }}</h1>
+  {% if error %}<p class="admin-error" role="alert">{{ error }}</p>{% endif %}
+  <form class="admin-form" action="{{ '/admin/authors/' ~ author_id if author_id else '/admin/authors' }}" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="admin-form-grid">
+      <label>著者名<input name="name" value="{{ values.name }}" required></label>
+      <label>slug<input name="slug" value="{{ values.slug }}" pattern="[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*" required></label>
+      <label>表示用読み<input name="name_reading" value="{{ values.name_reading or '' }}"></label>
+      <label>50音順用カナ<input name="name_kana" value="{{ values.name_kana or '' }}"></label>
+      <label>外国語表記<input name="name_foreign" value="{{ values.name_foreign or '' }}"></label>
+      <label>画像URL<input name="image_url" value="{{ values.image_url or '' }}"></label>
+    </div>
+    <label>説明<textarea name="description" rows="6">{{ values.description or "" }}</textarea></label>
+    <fieldset>
+      <legend>生年月日</legend>
+      <div class="admin-form-grid admin-form-grid--three">
+        <label>日付<input name="birth_date" value="{{ values.birth_date or '' }}" placeholder="YYYY-MM-DD"></label>
+        <label>紀元<select name="birth_era"><option value="ad"{% if values.birth_era == "ad" %} selected{% endif %}>西暦</option><option value="bc"{% if values.birth_era == "bc" %} selected{% endif %}>紀元前</option></select></label>
+        <label>精度<select name="birth_precision">{% for value, label in [("unknown", "不明"), ("year", "年"), ("month", "月"), ("day", "日")] %}<option value="{{ value }}"{% if values.birth_precision == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>没年月日</legend>
+      <div class="admin-form-grid admin-form-grid--three">
+        <label>日付<input name="death_date" value="{{ values.death_date or '' }}" placeholder="YYYY-MM-DD"></label>
+        <label>紀元<select name="death_era"><option value="ad"{% if values.death_era == "ad" %} selected{% endif %}>西暦</option><option value="bc"{% if values.death_era == "bc" %} selected{% endif %}>紀元前</option></select></label>
+        <label>精度<select name="death_precision">{% for value, label in [("unknown", "不明"), ("year", "年"), ("month", "月"), ("day", "日")] %}<option value="{{ value }}"{% if values.death_precision == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>職業（表示順を1から重複なく指定）</legend>
+      <div class="admin-related-list">
+        {% for item in professions %}
+          <div><label class="admin-check"><input type="checkbox" name="profession_ids" value="{{ item.id }}"{% if item.id in selected_professions %} checked{% endif %}> {{ item.name }}</label><label>順序 <input class="admin-order" type="number" min="1" name="profession_order_{{ item.id }}" value="{{ profession_orders.get(item.id, loop.index) }}"></label></div>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>国と生誕国</legend>
+      <label class="admin-check"><input type="radio" name="birth_country_id" value=""{% if selected_birth_country_id is none %} checked{% endif %}> 生誕国を指定しない</label>
+      <div class="admin-related-list">
+        {% for item in countries %}
+          <div><label class="admin-check"><input type="checkbox" name="country_ids" value="{{ item.id }}"{% if item.id in selected_countries %} checked{% endif %}> {{ item.name }}</label><label class="admin-check"><input type="radio" name="birth_country_id" value="{{ item.id }}"{% if selected_birth_country_id == item.id %} checked{% endif %}> 生誕国</label></div>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="admin-form-actions"><button type="submit">保存</button><a href="/admin/authors">キャンセル</a></div>
+  </form>
+{% endblock %}

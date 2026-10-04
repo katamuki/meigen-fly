@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+
+{% block title %}名言管理{% endblock %}
+
+{% block content %}
+  <div class="admin-heading">
+    <div><h1>名言管理</h1><p>{{ total|comma }}件</p></div>
+    <a class="admin-button" href="/admin/quotes/new">名言を追加</a>
+  </div>
+  <form class="admin-search" action="/admin/quotes" method="get">
+    <label for="quote-search">IDまたは本文</label>
+    <input id="quote-search" name="q" value="{{ q }}">
+    <button type="submit">絞り込む</button>
+  </form>
+  <div class="admin-table-wrap">
+    <table class="admin-table">
+      <thead><tr><th>ID</th><th>本文</th><th>著者</th><th>状態</th><th>操作</th></tr></thead>
+      <tbody>
+        {% for quote in rows %}
+          <tr>
+            <td>{{ quote.id }}</td>
+            <td>{{ (quote.text or quote.text_en)|truncate(70) }}</td>
+            <td>{{ quote.author_name or "未設定" }}</td>
+            <td>{{ "公開" if quote.enable else "非公開" }}</td>
+            <td class="admin-actions">
+              <a href="/admin/quotes/{{ quote.id }}/edit">編集</a>
+              <a class="admin-danger-link" href="/admin/quotes/{{ quote.id }}/delete">削除</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5">該当する名言はありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <nav class="admin-pagination" aria-label="ページ移動">
+    {% if previous_url %}<a href="{{ previous_url }}">前へ</a>{% endif %}
+    <span>{{ page }}ページ</span>
+    {% if next_url %}<a href="{{ next_url }}">次へ</a>{% endif %}
+  </nav>
+{% endblock %}

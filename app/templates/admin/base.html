@@ -6,11 +6,15 @@
     <meta name="robots" content="noindex, nofollow">
     <title>{% block title %}管理画面{% endblock %} | 名言集.com</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/tokens.74bc89e2.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', path='/admin.c00e6ef5.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/admin.b242e875.css') }}">
   </head>
   <body>
     <header class="admin-header">
       <a class="admin-title" href="/admin">名言集.com 管理</a>
+      <nav class="admin-nav" aria-label="管理メニュー">
+        <a href="/admin/quotes">名言</a>
+        <a href="/admin/authors">著者</a>
+      </nav>
       <div class="admin-account">
         <span>{{ admin_email }}</span>
         <a href="/cdn-cgi/access/logout">ログアウト</a>

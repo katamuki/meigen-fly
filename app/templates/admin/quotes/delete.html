@@ -1,0 +1,21 @@
+{% extends "admin/base.html" %}
+
+{% block title %}名言削除{% endblock %}
+
+{% block content %}
+  <h1>名言を削除</h1>
+  <section class="admin-confirm">
+    <p>次の名言を削除します。この操作は取り消せません。</p>
+    <blockquote>{{ quote.text or quote.text_en }}</blockquote>
+    <dl>
+      <dt>ID</dt><dd>{{ quote.id }}</dd>
+      <dt>同時に削除されるカテゴリ関連</dt><dd>{{ category_count }}件</dd>
+      <dt>同時に削除されるいいね・ランキング</dt><dd>DBの関連件数（自動削除）</dd>
+    </dl>
+    <form action="/admin/quotes/{{ quote.id }}/delete" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="admin-danger" type="submit">削除する</button>
+      <a href="/admin/quotes/{{ quote.id }}/edit">戻る</a>
+    </form>
+  </section>
+{% endblock %}

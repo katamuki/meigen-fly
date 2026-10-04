@@ -1,0 +1,101 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+a { color: var(--accent); }
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.admin-title { color: var(--ink); font-weight: 700; text-decoration: none; }
+.admin-nav,
+.admin-account { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.admin-main { max-width: var(--container-wide); margin: 0 auto; padding: var(--sp-6) var(--gutter); }
+.admin-main h1 { font-family: var(--font-serif); font-size: var(--fs-display); }
+.admin-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); }
+.admin-stats div,
+.admin-menu,
+.admin-notice {
+  padding: var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.admin-stats dt { color: var(--muted); font-size: var(--fs-small); }
+.admin-stats dd { margin: var(--sp-2) 0 0; font-size: var(--fs-display); font-weight: 700; }
+.admin-menu { margin-top: var(--sp-6); }
+.admin-menu-list { display: flex; flex-wrap: wrap; gap: var(--sp-5); padding-left: var(--sp-5); }
+.admin-notice { border-color: var(--accent-soft); }
+.admin-menu button,
+.admin-form button,
+.admin-search button,
+.admin-button {
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-btn);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+.admin-heading,
+.admin-search,
+.admin-form-actions,
+.admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+.admin-search { justify-content: flex-start; margin: var(--sp-5) 0; }
+.admin-table-wrap { overflow-x: auto; }
+.admin-table { width: 100%; border-collapse: collapse; background: var(--surface); }
+.admin-table th,
+.admin-table td { padding: var(--sp-3); border: 1px solid var(--line); text-align: left; vertical-align: top; }
+.admin-actions { white-space: nowrap; }
+.admin-actions a + a { margin-left: var(--sp-3); }
+.admin-danger-link { color: var(--accent); font-weight: 700; }
+.admin-pagination { justify-content: center; margin-top: var(--sp-5); }
+.admin-form { display: grid; gap: var(--sp-5); }
+.admin-form label { display: grid; gap: var(--sp-2); }
+.admin-form input,
+.admin-form select,
+.admin-form textarea,
+.admin-search input {
+  width: 100%;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.admin-form textarea { resize: vertical; }
+.admin-form fieldset { padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-card); }
+.admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+.admin-form-grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.admin-option-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
+.admin-form .admin-check { display: flex; align-items: center; gap: var(--sp-2); }
+.admin-form .admin-check input { width: auto; }
+.admin-related-list { display: grid; gap: var(--sp-2); }
+.admin-related-list > div { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-2); border-bottom: 1px solid var(--line); }
+.admin-form .admin-order { width: 6rem; }
+.admin-error,
+.admin-confirm { padding: var(--sp-4); border: 1px solid var(--accent); border-radius: var(--r-card); background: var(--surface); }
+.admin-confirm form { display: flex; align-items: center; gap: var(--sp-4); }
+.admin-danger { padding: var(--sp-2) var(--sp-4); border: 0; border-radius: var(--r-btn); background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 700; cursor: pointer; }
+@media (max-width: 640px) {
+  .admin-header { align-items: flex-start; flex-direction: column; }
+  .admin-stats { grid-template-columns: 1fr; }
+  .admin-form-grid,
+  .admin-form-grid--three,
+  .admin-option-grid { grid-template-columns: 1fr; }
+}

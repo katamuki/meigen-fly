@@ -124,7 +124,7 @@ def _error_message(error: ValidationError) -> str:
     return labels.get(field, "入力内容を確認してください。")
 
 
-def _choices(connection: Connection) -> dict:
+def quote_choices(connection: Connection) -> dict:
     return {
         "authors": connection.execute(
             select(authors.c.id, authors.c.name, authors.c.slug).order_by(
@@ -174,11 +174,11 @@ def _form_context(
         "selected_character_id": int_or_none(values.get("character_id")),
         "quote_id": quote_id,
         "error": error,
-        **_choices(connection),
+        **quote_choices(connection),
     }
 
 
-def _validate_references(connection: Connection, data: QuoteForm) -> str | None:
+def validate_quote_references(connection: Connection, data: QuoteForm) -> str | None:
     checks = (
         (data.author_id, authors, "選択した著者が見つかりません。"),
         (data.source_id, sources, "選択した出典が見つかりません。"),
@@ -385,7 +385,7 @@ async def quote_create(
             context=context,
             status_code=422,
         )
-    reference_error = _validate_references(connection, data)
+    reference_error = validate_quote_references(connection, data)
     if reference_error:
         return templates.TemplateResponse(
             request=request,
@@ -508,7 +508,7 @@ async def quote_update(
             ),
             status_code=422,
         )
-    reference_error = _validate_references(connection, data)
+    reference_error = validate_quote_references(connection, data)
     if reference_error:
         return templates.TemplateResponse(
             request=request,

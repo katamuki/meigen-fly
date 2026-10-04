@@ -8,14 +8,23 @@
   <div class="admin-table-wrap">
     <table class="admin-table">
       <thead>
-        <tr><th>件</th><th>名前</th><th>slug</th><th>職業</th><th>国（生誕国）</th><th>警告</th></tr>
+        <tr><th>件</th><th>名前・読み</th><th>slug</th><th>生没年</th><th>職業</th><th>国（生誕国）</th><th>警告</th></tr>
       </thead>
       <tbody>
         {% for entry in entries %}
           <tr>
             <td>{{ entry.number }}</td>
-            <td>{{ entry.data.name }}</td>
+            <td>
+              <strong>{{ entry.data.name }}</strong><br>
+              表示用読み: {{ entry.data.name_reading or "—" }}<br>
+              50音順用カナ: {{ entry.data.name_kana or "—" }}<br>
+              外国語表記: {{ entry.data.name_foreign or "—" }}
+            </td>
             <td>{{ entry.data.slug }}</td>
+            <td>
+              生: {{ entry.data.birth_date or "不明" }}（{{ entry.data.birth_era }} / {{ entry.data.birth_precision }}）<br>
+              没: {{ entry.data.death_date or "不明" }}（{{ entry.data.death_era }} / {{ entry.data.death_precision }}）
+            </td>
             <td>{{ entry.profession_names|join("、") or "—" }}</td>
             <td>{{ entry.country_names|join("、") or "—" }}{% if entry.birth_country_name %}（{{ entry.birth_country_name }}）{% endif %}</td>
             <td>
@@ -38,7 +47,7 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <input type="hidden" name="json_input" value="{{ json_input }}">
     <div class="admin-form-actions">
-      <a href="/admin/authors/bulk">入力画面へ戻る</a>
+      <button type="submit" formaction="/admin/authors/bulk/edit">修正する</button>
       <button type="submit">この内容で登録</button>
     </div>
   </form>

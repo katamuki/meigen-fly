@@ -449,7 +449,7 @@ def author_new(
     )
 
 
-def _author_values(data: AuthorForm, now: datetime, *, create: bool) -> dict:
+def author_values(data: AuthorForm, now: datetime, *, create: bool) -> dict:
     values = data.model_dump(
         exclude={"profession_ids", "country_ids", "birth_country_id"}
     )
@@ -459,7 +459,7 @@ def _author_values(data: AuthorForm, now: datetime, *, create: bool) -> dict:
     return values
 
 
-def _write_relations(
+def write_author_relations(
     connection: Connection, author_id: int, data: AuthorForm, now: datetime
 ) -> None:
     instant = format_instant(now)
@@ -545,9 +545,9 @@ async def author_create(
     try:
         with connection.engine.begin() as write_connection:
             author_id = write_connection.execute(
-                insert(authors).values(**_author_values(data, now, create=True))
+                insert(authors).values(**author_values(data, now, create=True))
             ).inserted_primary_key[0]
-            _write_relations(write_connection, author_id, data, now)
+            write_author_relations(write_connection, author_id, data, now)
     except IntegrityError:
         return _author_form_error(
             request,
@@ -634,7 +634,7 @@ async def author_update(
             write_connection.execute(
                 update(authors)
                 .where(authors.c.id == author_id)
-                .values(**_author_values(data, now, create=False))
+                .values(**author_values(data, now, create=False))
             )
             write_connection.execute(
                 delete(author_professions).where(
@@ -644,7 +644,7 @@ async def author_update(
             write_connection.execute(
                 delete(author_country).where(author_country.c.author_id == author_id)
             )
-            _write_relations(write_connection, author_id, data, now)
+            write_author_relations(write_connection, author_id, data, now)
     except IntegrityError:
         return _author_form_error(
             request,

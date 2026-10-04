@@ -222,6 +222,23 @@ def test_quote_bulk_limit(admin_bulk_client) -> None:
     assert "最大500件" in response.text
 
 
+def test_quote_bulk_common_error_is_not_repeated_for_each_line(
+    admin_bulk_client,
+) -> None:
+    client, _engine = admin_bulk_client
+    response = client.post(
+        "/admin/quotes/bulk/confirm",
+        data=_quote_bulk_form(
+            weight="invalid",
+            bulk_input="一行目\n二行目\n三行目",
+        ),
+    )
+
+    assert response.status_code == 422
+    assert response.text.count("既定の重みは1〜10の整数") == 1
+    assert "weightの形式" not in response.text
+
+
 def test_quote_bulk_confirm_then_create_commits_before_purge_and_logs(
     admin_bulk_client,
     monkeypatch: pytest.MonkeyPatch,
@@ -232,6 +249,10 @@ def test_quote_bulk_confirm_then_create_commits_before_purge_and_logs(
     confirmation = client.post("/admin/quotes/bulk/confirm", data=form)
     assert confirmation.status_code == 200
     assert "2件を登録" in confirmation.text
+    assert "既存著者" in confirmation.text
+    assert "出典" in confirmation.text
+    assert "登場人物" in confirmation.text
+    assert "著者ID" not in confirmation.text
     observed: dict[str, object] = {}
 
     def assert_committed(paths: list[str]) -> CachePurgeResult:
@@ -289,8 +310,10 @@ def test_bulk_posts_require_csrf(admin_bulk_client) -> None:
     client, _engine = admin_bulk_client
     data = {"bulk_input": "CSRFなし", "json_input": "[]"}
     assert client.post("/admin/quotes/bulk/confirm", data=data).status_code == 403
+    assert client.post("/admin/quotes/bulk/edit", data=data).status_code == 403
     assert client.post("/admin/quotes/bulk", data=data).status_code == 403
     assert client.post("/admin/authors/bulk/confirm", data=data).status_code == 403
+    assert client.post("/admin/authors/bulk/edit", data=data).status_code == 403
     assert client.post("/admin/authors/bulk", data=data).status_code == 403
 
 
@@ -302,6 +325,13 @@ def test_bulk_posts_require_csrf(admin_bulk_client) -> None:
         ("[]", "1件以上"),
         (json.dumps([_author_item()] * 11, ensure_ascii=False), "10件以内"),
         (json.dumps([{"slug": "missing-name"}]), "著者名は必須"),
+        (
+            json.dumps(
+                [_author_item(birthdate="0480-01-01", desciption="誤記")],
+                ensure_ascii=False,
+            ),
+            "不明な項目「birthdate」",
+        ),
         (
             json.dumps(
                 [_author_item(slug="same"), _author_item(name="別名", slug="same")],
@@ -369,6 +399,37 @@ def test_author_bulk_warnings_do_not_block_confirmation(admin_bulk_client) -> No
     assert response.status_code == 200
     assert "同名の著者が既にいます" in response.text
     assert "入力内" in response.text
+
+
+def test_author_bulk_confirmation_shows_readings_and_life_dates(
+    admin_bulk_client,
+) -> None:
+    client, _engine = admin_bulk_client
+
+    response = client.post(
+        "/admin/authors/bulk/confirm", data=_author_bulk_form([_author_item()])
+    )
+
+    assert response.status_code == 200
+    assert "あたらしいちょしゃ" in response.text
+    assert "アタラシイチョシャ" in response.text
+    assert "New Author" in response.text
+    assert "0480-01-01（bc / year）" in response.text
+    assert "0406-01-01（bc / year）" in response.text
+
+
+def test_bulk_edit_returns_to_input_with_values(admin_bulk_client) -> None:
+    client, _engine = admin_bulk_client
+    quote_form = _quote_bulk_form()
+    quote_response = client.post("/admin/quotes/bulk/edit", data=quote_form)
+    author_form = _author_bulk_form([_author_item()])
+    author_response = client.post("/admin/authors/bulk/edit", data=author_form)
+
+    assert quote_response.status_code == 200
+    assert "一つ目\tFirst\t7" in quote_response.text
+    assert 'option value="1" selected' in quote_response.text
+    assert author_response.status_code == 200
+    assert "new-author" in author_response.text
 
 
 def test_author_bulk_confirm_then_create_relations_purge_and_log(
@@ -439,7 +500,7 @@ def test_author_bulk_rolls_back_all_when_later_entry_fails(
     admin_bulk_client, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     client, engine = admin_bulk_client
-    original = admin_bulk._write_relations
+    original = admin_bulk.write_author_relations
     calls = 0
 
     def fail_second(connection, author_id: int, data, now) -> None:
@@ -449,7 +510,7 @@ def test_author_bulk_rolls_back_all_when_later_entry_fails(
             raise IntegrityError("forced", {}, Exception("forced"))
         original(connection, author_id, data, now)
 
-    monkeypatch.setattr(admin_bulk, "_write_relations", fail_second)
+    monkeypatch.setattr(admin_bulk, "write_author_relations", fail_second)
     items = [
         _author_item(),
         _author_item(name="二人目", slug="second-author"),

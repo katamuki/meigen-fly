@@ -27,8 +27,12 @@ from app.admin import (
 from app.db import get_connection
 from app.instants import format_instant
 from app.routers.admin import templates
-from app.routers.admin_authors import AuthorForm, _author_values, _write_relations
-from app.routers.admin_quotes import QuoteForm, _choices, _validate_references
+from app.routers.admin_authors import AuthorForm, author_values, write_author_relations
+from app.routers.admin_quotes import (
+    QuoteForm,
+    quote_choices,
+    validate_quote_references,
+)
 from app.schema import (
     authors,
     characters,
@@ -45,6 +49,24 @@ ConnectionDependency = Annotated[Connection, Depends(get_connection)]
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 MAX_BULK_QUOTES = 500
 MAX_BULK_AUTHORS = 10
+AUTHOR_BULK_FIELDS = {
+    "name",
+    "slug",
+    "description",
+    "image_url",
+    "name_kana",
+    "name_foreign",
+    "name_reading",
+    "birth_date",
+    "birth_era",
+    "birth_precision",
+    "death_date",
+    "death_era",
+    "death_precision",
+    "professions",
+    "countries",
+    "birth_country",
+}
 
 
 @dataclass(frozen=True)
@@ -102,7 +124,7 @@ def _quote_input_context(
     values: dict[str, object],
     errors: list[str] | None = None,
 ) -> dict[str, object]:
-    choices = {name: list(rows) for name, rows in _choices(connection).items()}
+    choices = {name: list(rows) for name, rows in quote_choices(connection).items()}
     return {
         "request": request,
         "admin_email": admin_email,
@@ -154,10 +176,23 @@ def _parse_bulk_quotes(
             )
         )
         shared_data = None
+    row_shared: dict[str, object]
     if shared_data is not None:
-        reference_error = _validate_references(connection, shared_data)
+        reference_error = validate_quote_references(connection, shared_data)
         if reference_error:
             errors.append(reference_error)
+        row_shared = shared_data.model_dump()
+    else:
+        row_shared = {
+            "text": "仮の本文",
+            "author_id": None,
+            "source_id": None,
+            "character_id": None,
+            "weight": 5,
+            "slug": None,
+            "enable": True,
+            "display_language_preference": "ja",
+        }
 
     bulk_input = str(values.get("bulk_input", ""))
     rows = bulk_input.splitlines()
@@ -180,10 +215,10 @@ def _parse_bulk_quotes(
         if not text:
             errors.append(f"{line_number}行目: 日本語本文を入力してください。")
         row_values = {
-            **shared,
+            **row_shared,
             "text": text or "仮の本文",
             "text_en": text_en or None,
-            "weight": weight or values.get("weight", "5"),
+            "weight": weight or row_shared["weight"],
         }
         try:
             data = QuoteForm.model_validate(row_values)
@@ -214,6 +249,26 @@ def _quote_purge_paths(connection: Connection, data: QuoteForm) -> list[str]:
         if slug:
             paths.add(f"{prefix}{slug}")
     return sorted(paths)
+
+
+def _quote_selection_labels(
+    connection: Connection, data: QuoteForm
+) -> dict[str, str | None]:
+    selections = (
+        ("author", data.author_id, authors.c.name, authors.c.id),
+        ("source", data.source_id, sources.c.title, sources.c.id),
+        ("character", data.character_id, characters.c.name, characters.c.id),
+    )
+    labels: dict[str, str | None] = {}
+    for key, entity_id, label_column, id_column in selections:
+        labels[key] = (
+            connection.execute(
+                select(label_column).where(id_column == entity_id)
+            ).scalar_one_or_none()
+            if entity_id is not None
+            else None
+        )
+    return labels
 
 
 @router.get("/quotes/bulk", response_class=HTMLResponse)
@@ -261,7 +316,22 @@ async def quote_bulk_confirm(
             "csrf_token": issue_csrf_token(admin_email),
             "values": values,
             "entries": entries,
+            "selection_labels": _quote_selection_labels(connection, entries[0].data),
         },
+    )
+
+
+@router.post("/quotes/bulk/edit")
+async def quote_bulk_edit(
+    request: Request, admin_email: AdminEmail, connection: ConnectionDependency
+) -> HTMLResponse:
+    form = await read_urlencoded_form(request)
+    require_csrf(form, admin_email)
+    values = _quote_raw_values(form)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/quotes/bulk_input.html",
+        context=_quote_input_context(request, admin_email, connection, values=values),
     )
 
 
@@ -375,6 +445,8 @@ def _parse_bulk_authors(
         if not isinstance(item, dict):
             current.append("各要素は著者オブジェクトにしてください。")
             continue
+        for field in sorted(set(item) - AUTHOR_BULK_FIELDS):
+            current.append(f"不明な項目「{field}」があります。")
         profession_names = _string_list(item, "professions", "職業", number, errors)
         country_names = _string_list(item, "countries", "国", number, errors)
         birth_country_name = item.get("birth_country")
@@ -537,6 +609,18 @@ async def author_bulk_confirm(
     )
 
 
+@router.post("/authors/bulk/edit")
+async def author_bulk_edit(request: Request, admin_email: AdminEmail) -> HTMLResponse:
+    form = await read_urlencoded_form(request)
+    require_csrf(form, admin_email)
+    json_input = one(form, "json_input")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/authors/bulk_input.html",
+        context=_author_input_context(request, admin_email, json_input=json_input),
+    )
+
+
 @router.post("/authors/bulk")
 async def author_bulk_create(
     request: Request, admin_email: AdminEmail, connection: ConnectionDependency
@@ -560,10 +644,10 @@ async def author_bulk_create(
             for entry in entries:
                 author_id = write_connection.execute(
                     insert(authors).values(
-                        **_author_values(entry.data, now, create=True)
+                        **author_values(entry.data, now, create=True)
                     )
                 ).inserted_primary_key[0]
-                _write_relations(write_connection, author_id, entry.data, now)
+                write_author_relations(write_connection, author_id, entry.data, now)
     except IntegrityError:
         return templates.TemplateResponse(
             request=request,

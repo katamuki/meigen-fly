@@ -1,0 +1,21 @@
+app = "meigensyu"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DATABASE_URL = "sqlite:////data/app.db"
+  PUBLIC_ORIGIN = "https://www.meigensyu.com"
+
+[[mounts]]
+  source = "data"
+  destination = "/data"
+
+[[restart]]
+  policy = "always"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

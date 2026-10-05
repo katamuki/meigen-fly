@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-10-04（フェーズ4完了）
+> - 更新日: 2026-10-05（フェーズ5-A完了）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -321,9 +321,9 @@ meigen-fly/
 - 旧APIのうち移行・初期設定専用の`create-admin-user`・`setup-migration`・`migrate-professions`・`seed-categories`は移植しなかった
 
 ### フェーズ5: デプロイ・インフラ
-- [ ] Dockerfile / fly.toml / ボリューム
-- [ ] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`と`fontconfig`を入れ、ビルド時に選ばれたフォントファイルとフェイス名まで検査する。Debianの`fonts-noto-cjk`にSemiBoldが無ければ`FONT_CANDIDATES`の順でBoldが選ばれ、デザインの600とずれる。`fonts-noto-cjk-extra`を入れるかBoldで許容するかを決める
-- [ ] Uvicornのアクセスログ設定: 既定ではqueryを含むリクエスト行が出るため、queryと送信元IPを通常ログへ残さない設定にする（ADR 015。プライバシーポリシーの「IPと検索語を通常ログへ保存しない」の前提。Tunnel経由の転送ヘッダーでIPが出るかも確かめる）
+- [x] Dockerfile / fly.toml / ボリューム（2026-10-05、5-A。外部サービス上の作成・デプロイはフェーズ5-Cのrunbook作成後に管理者が実施）
+- [x] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`・`fonts-noto-cjk-extra`・`fontconfig`を入れ、ビルド時に既存の選択処理が`NotoSerifCJK-SemiBold.ttc`の`Noto Serif CJK JP SemiBold`を選ぶことと、fontconfigの日本語serif解決を検査する（2026-10-05、5-A）
+- [x] Uvicornのアクセスログ設定: `--no-access-log`でqueryと送信元IPをアクセスログへ残さない。アプリログにも両者を出す箇所がないことを確認した（2026-10-05、5-A）
 - [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）
 - [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeoutを設定し、transaction成功後・cache purge前に成功Heartbeatを送る（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）

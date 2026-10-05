@@ -1,1 +1,4 @@
-# Scheduled jobs are added in phase 5-B.
+# 毎日03:00 JST（18:00 UTC）
+0 18 * * * flock -n /tmp/backup_sqlite.lock timeout 600 python /app/scripts/backup_sqlite.py
+# 毎日12:00・翌00:00 JST（03:00・15:00 UTC）
+0 3,15 * * * flock -n /tmp/refresh_rankings.lock timeout 300 python /app/scripts/refresh_rankings.py

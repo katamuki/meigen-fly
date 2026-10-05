@@ -142,3 +142,31 @@ def get_search_rate_limit() -> tuple[int, float]:
         DEFAULT_SEARCH_RATE_LIMIT_REQUESTS,
         DEFAULT_SEARCH_RATE_LIMIT_WINDOW_SECONDS,
     )
+
+
+def get_backup_r2_endpoint() -> str | None:
+    return os.getenv("BACKUP_R2_ENDPOINT", "").strip().rstrip("/") or None
+
+
+def get_backup_r2_bucket() -> str | None:
+    return os.getenv("BACKUP_R2_BUCKET", "").strip() or None
+
+
+def get_backup_r2_prefix() -> str:
+    return os.getenv("BACKUP_R2_PREFIX", "daily/")
+
+
+def get_backup_r2_access_key_id() -> str | None:
+    return os.getenv("BACKUP_R2_ACCESS_KEY_ID", "").strip() or None
+
+
+def get_backup_r2_secret_access_key() -> str | None:
+    return os.getenv("BACKUP_R2_SECRET_ACCESS_KEY", "") or None
+
+
+def get_uptimerobot_backup_heartbeat_url() -> str | None:
+    return os.getenv("UPTIMEROBOT_BACKUP_HEARTBEAT_URL", "").strip() or None
+
+
+def get_uptimerobot_ranking_heartbeat_url() -> str | None:
+    return os.getenv("UPTIMEROBOT_RANKING_HEARTBEAT_URL", "").strip() or None

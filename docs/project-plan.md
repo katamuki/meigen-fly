@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-10-05（フェーズ5-A完了）
+> - 更新日: 2026-10-06（フェーズ5-B完了）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -325,8 +325,8 @@ meigen-fly/
 - [ ] Fly Volume `data`の作成（リポジトリ側の設定は完了。管理者による作成はフェーズ5-Cのrunbook作成後に実施）
 - [x] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`・`fonts-noto-cjk-extra`・`fontconfig`を入れ、ビルド時に既存の選択処理が`NotoSerifCJK-SemiBold.ttc`の`Noto Serif CJK JP SemiBold`を選ぶことと、fontconfigの日本語serif解決を検査する（2026-10-05、5-A）
 - [x] Uvicornのアクセスログ設定: `--no-access-log`でqueryと送信元IPをアクセスログへ残さない。アプリログにも両者を出す箇所がないことを確認した（2026-10-05、5-A）
-- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）
-- [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeoutを設定し、transaction成功後・cache purge前に成功Heartbeatを送る（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）
+- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）。リポジトリ側は完了（2026-10-06、5-B）、R2 Lifecycle・UptimeRobot監視設定・通知先は5-Cのrunbookで管理者が実施
+- [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeoutを設定し、transaction成功後・cache purge前に成功Heartbeatを送る（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）。リポジトリ側は完了（2026-10-06、5-B）、UptimeRobot監視設定・通知先は5-Cのrunbookで管理者が実施
 - [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
 - [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）。Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`もキャッシュ対象にし、`meigensyu.com`→`www.meigensyu.com`のhost正規化もここで設定する
 - [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）

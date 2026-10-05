@@ -8,8 +8,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.config import get_uptimerobot_ranking_heartbeat_url
 from app.db import engine
 from app.services.cache_purge import CachePurgeStatus, purge_cache
+from app.services.heartbeat import send_heartbeat
 from app.services.ranking_refresh import refresh_rankings
 
 RANKING_PURGE_PATHS = [
@@ -38,6 +40,7 @@ def main() -> int:
         result.duration_seconds,
         result.refreshed_at.isoformat(),
     )
+    send_heartbeat("refresh_rankings", get_uptimerobot_ranking_heartbeat_url())
     purge = purge_cache(RANKING_PURGE_PATHS)
     if purge.status is CachePurgeStatus.SUCCESS:
         logger.info("cache purge succeeded urls=%d", len(purge.urls))

@@ -321,7 +321,8 @@ meigen-fly/
 - 旧APIのうち移行・初期設定専用の`create-admin-user`・`setup-migration`・`migrate-professions`・`seed-categories`は移植しなかった
 
 ### フェーズ5: デプロイ・インフラ
-- [x] Dockerfile / fly.toml / ボリューム（2026-10-05、5-A。外部サービス上の作成・デプロイはフェーズ5-Cのrunbook作成後に管理者が実施）
+- [x] Dockerfile / fly.toml / Volumeマウント設定（2026-10-05、5-A）
+- [ ] Fly Volume `data`の作成（リポジトリ側の設定は完了。管理者による作成はフェーズ5-Cのrunbook作成後に実施）
 - [x] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`・`fonts-noto-cjk-extra`・`fontconfig`を入れ、ビルド時に既存の選択処理が`NotoSerifCJK-SemiBold.ttc`の`Noto Serif CJK JP SemiBold`を選ぶことと、fontconfigの日本語serif解決を検査する（2026-10-05、5-A）
 - [x] Uvicornのアクセスログ設定: `--no-access-log`でqueryと送信元IPをアクセスログへ残さない。アプリログにも両者を出す箇所がないことを確認した（2026-10-05、5-A）
 - [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）

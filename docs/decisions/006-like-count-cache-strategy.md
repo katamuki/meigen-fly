@@ -53,3 +53,7 @@
 - botによる水増しや可用性影響が継続的に観測される
 - いいね数をランキングや金銭的価値のある判定に利用する
 - 複数Machine化によりアプリ内制限が実効性を失う
+
+## 追記（2026-10-06、フェーズ5-C）
+
+Cloudflare Freeの現行Rate limitingではHTTP Method条件が使えない。エッジの1ルールは`starts_with(http.request.uri.path, "/api/likes/")`だけを条件とし、IP単位10回/10秒・block 10秒を維持する。全methodをカウントするが、アプリ側は引き続きPOSTだけを受け付ける。[公式プラン別仕様](https://developers.cloudflare.com/waf/rate-limiting-rules/)・[運用runbook §2.6](../operations-runbook.md#26-切替時-waf)

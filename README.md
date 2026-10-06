@@ -36,3 +36,18 @@ ADMIN_DEV_EMAIL=you@example.com SECRET_KEY="$(openssl rand -hex 32)" uv run uvic
 ```
 
 起動後に <http://localhost:8000/admin> を開きます。この迂回は`PUBLIC_ORIGIN`のホストが`localhost`または`127.0.0.1`の場合だけ有効です。生成した鍵の実値はリポジトリやシェル設定へ保存しません。
+
+## 本番コンテナ
+
+```bash
+docker build -t meigen-fly:local .
+container_data_dir=$(mktemp -d)
+docker run -d --name meigen-fly-local --mount "type=bind,src=$container_data_dir,dst=/data" \
+  -e PUBLIC_ORIGIN=https://www.meigensyu.com meigen-fly:local
+docker exec meigen-fly-local curl --fail -H 'Host: www.meigensyu.com' http://127.0.0.1:8000/healthz
+docker exec meigen-fly-local flock -n /tmp/refresh_rankings.lock timeout 300 python /app/scripts/refresh_rankings.py
+docker exec meigen-fly-local flock -n /tmp/backup_sqlite.lock timeout 600 python /app/scripts/backup_sqlite.py
+docker rm -f meigen-fly-local
+```
+
+起動時のmigration終了まで数秒待ってから確認します。Uvicornはコンテナ内のloopbackだけで待ち受けるため、確認は`docker exec`で行います。Tunnel token未設定ではcloudflaredだけが再起動を繰り返します。バックアップはR2設定が無ければ非ゼロで終了し、Heartbeatは未設定なら送信しません。資格情報がある場合はGit管理外のenvファイルを`--env-file`で渡します。外部設定・デプロイ・DB入れ替え・復旧は[運用runbook](docs/operations-runbook.md)を参照してください。

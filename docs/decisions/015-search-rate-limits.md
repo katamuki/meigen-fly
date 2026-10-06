@@ -41,3 +41,9 @@
 
 - [Cloudflare Rate limiting rules](https://developers.cloudflare.com/waf/rate-limiting-rules/)
 - [htmx `hx-trigger`](https://htmx.org/attributes/hx-trigger/)
+
+## 追記（2026-10-06、フェーズ5-C）
+
+Uvicornは`--no-access-log`で起動する。Uvicornは既定で`127.0.0.1`からの`X-Forwarded-For`を信頼するため、Tunnel経由のアクセスログには送信元IPとqueryが出る。書式加工よりログ自体を出さない方が単純で確実である。通信量はCloudflare Analyticsで見る。アプリ通常ログにもIP・検索語を出さない。
+
+Cloudflare FreeはRate limitingのMethod条件を提供しないため、いいね用の1枠は`/api/likes/`のpath条件とし、全methodをカウントする（APIはPOSTのみ）。検索用ルールは追加しない。[公式プラン別仕様](https://developers.cloudflare.com/waf/rate-limiting-rules/)

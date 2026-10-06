@@ -312,3 +312,11 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] Tunnel routeとFastAPIが`www.meigensyu.com`だけを許可し、未知Hostを拒否する
 - [ ] 匿名いいねPOSTが`CF-Connecting-IP`から送信元IPを取得できる
 - [ ] `cloudflared`停止時に迂回経路がなくfail closedになり、public IP削除後もFlyの管理経路から復旧できる
+
+## 追記（2026-10-06、フェーズ5-C）
+
+§9: GitHub Actionsのデプロイは`workflow_dispatch`で手動実行する。単一Machineの停止と起動時migrationを伴うためpushごとには本番を入れ替えない。テストはmainへのpushとpull requestで自動実行する。Uvicornは`--no-access-log`とし、通信量はCloudflare Analyticsで見る。
+
+Flyの現行`fly deploy`は予備Machine作成（`--ha`）が既定trueなので、単一Machineを維持するため`--ha=false`、公開IPを新規取得しないため`--no-public-ips`を明示する。[公式deploy仕様](https://fly.io/docs/flyctl/deploy/)
+
+§8: Cloudflare FreeのRate limiting条件はPath・Verified Botだけで、Method条件はBusiness以上。したがって`/api/likes/`配下をpathだけで10回/10秒・block 10秒とする。API自体はPOSTのみを受け付ける。Cache RulesはOG・sitemap・robotsと実装のno-store対象も明示する。詳細な式と切替前/切替時の区分は[運用runbook §2](../operations-runbook.md#2-cloudflare)。[公式プラン別仕様](https://developers.cloudflare.com/waf/rate-limiting-rules/)

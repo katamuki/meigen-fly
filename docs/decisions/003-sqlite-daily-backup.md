@@ -53,3 +53,9 @@
 - [Cloudflare R2 Object Lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)
 - [UptimeRobot Heartbeat Monitoring](https://uptimerobot.com/help/heartbeat-monitoring/)
 - [UptimeRobot Mobile App](https://uptimerobot.com/mobile-app/)
+
+## 追記（2026-10-06、フェーズ5-C）
+
+R2へのアップロードは`boto3`を追加せず、標準ライブラリの`hashlib`・`hmac`・`urllib.request`でSigV4署名した単一PUTとする。数MBのDBにmultipartは不要。キーは`daily/app-<UTC日時（秒まで）>.db`、圧縮なし。R2必須設定が不足したら欠けた変数名を示して非ゼロ終了する。Heartbeat URLと署名・鍵はログに出さない。
+
+復旧の具体的なコマンドは[運用runbook §6・§7](../operations-runbook.md#6-sqliteファイルの配置と入れ替え最終移行)。R2 dashboardから手元へ取得し、検査して別名でVolumeへ置き、Uvicorn・supercronicを止めて旧DB/WAL/SHMをまとめて退避する。cloudflaredは止めない。ローカル演習はR2取得を本番相当の手元DBで代用した。本物のR2取得・通知・復元検収は管理者がリリース前に行う。

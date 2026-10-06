@@ -1,0 +1,22 @@
+name: Deploy
+# DNS切替後から使う。切替前は旧サイトへsmoke testが届くため、手元のflyctlでデプロイする。
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: superfly/flyctl-actions/setup-flyctl@v1
+      - run: flyctl deploy --remote-only --ha=false --no-public-ips
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Smoke test
+        run: |
+          response=$(curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors https://www.meigensyu.com/healthz)
+          printf '%s\n' "$response" | grep --fixed-strings '"status":"ok"'

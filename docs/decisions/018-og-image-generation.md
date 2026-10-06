@@ -83,3 +83,7 @@
 - [ADR 014: Cloudflareキャッシュの更新反映](014-cache-purge-boundaries.md)
 - [ADR 017: デザイン刷新の範囲とデザインシステム](017-design-system-d8.md)
 - [`docs/design/design-guide.md`](../design/design-guide.md)
+
+## フォントの追記（2026-10-06、フェーズ5-C）
+
+`fonts-noto-cjk`に加えて`fonts-noto-cjk-extra`を導入し、`NotoSerifCJK-SemiBold.ttc`の`Noto Serif CJK JP SemiBold`を使う。デザインのweight 600に合わせるため、イメージが数百MB大きくなることを受容する。ビルド時に既存の`_font_file()`の選択結果・フェイス名を検査し、fontconfigの日本語serif解決も確認する。期待と異なる場合はビルドを失敗させる。SemiBoldの収録は実際のビルドで確認済みであり、Boldへの切替は行っていない。

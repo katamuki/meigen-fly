@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-10-06（フェーズ5-B完了）
+> - 更新日: 2026-10-06（フェーズ5-Cリポジトリ側完了）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -321,31 +321,38 @@ meigen-fly/
 - 旧APIのうち移行・初期設定専用の`create-admin-user`・`setup-migration`・`migrate-professions`・`seed-categories`は移植しなかった
 
 ### フェーズ5: デプロイ・インフラ
+
+**リポジトリ側は完了（2026-10-06、5-C）**。[運用runbook](operations-runbook.md)の外部サービス手順は未検証。管理者の外部設定・実通信の検収は以下の未完項目に残す。
+
 - [x] Dockerfile / fly.toml / Volumeマウント設定（2026-10-05、5-A）
-- [ ] Fly Volume `data`の作成（リポジトリ側の設定は完了。管理者による作成はフェーズ5-Cのrunbook作成後に実施）
-- [x] OG画像のフォント導入（ADR 018）: `fonts-noto-cjk`・`fonts-noto-cjk-extra`・`fontconfig`を入れ、ビルド時に既存の選択処理が`NotoSerifCJK-SemiBold.ttc`の`Noto Serif CJK JP SemiBold`を選ぶことと、fontconfigの日本語serif解決を検査する（2026-10-05、5-A）
-- [x] Uvicornのアクセスログ設定: `--no-access-log`でqueryと送信元IPをアクセスログへ残さない。アプリログにも両者を出す箇所がないことを確認した（2026-10-05、5-A）
-- [ ] 日次SQLiteオンラインバックアップ、R2 Lifecycle、UptimeRobot Heartbeat通知（アプリPushを主、メールを予備。D2/ADR 003）。リポジトリ側は完了（2026-10-06、5-B）、R2 Lifecycle・UptimeRobot監視設定・通知先は5-Cのrunbookで管理者が実施
-- [ ] ランキング再計算CLI（4-Bの`scripts/refresh_rankings.py`）のsupercronic登録。`flock`・timeoutを設定し、transaction成功後・cache purge前に成功Heartbeatを送る（D6/ADR 005）。旧環境のpg_cronは1日2回（`0 3,15 * * *`、UTC）。リポジトリ側は完了（2026-10-06、5-B）、UptimeRobot監視設定・通知先は5-Cのrunbookで管理者が実施
-- [ ] R2からの復旧runbookと、リリース前または大きな変更後の復元確認（D2/ADR 003）
-- [ ] Cloudflare（DNS/SSL/Cache Rules/WAF）。Cache Rulesで`*/og.png`・`/sitemap.xml`・`/robots.txt`もキャッシュ対象にし、`meigensyu.com`→`www.meigensyu.com`のhost正規化もここで設定する
-- [ ] Cloudflare Tunnel同居、Uvicorn loopback bind、exact Host検証、Fly public IP/service削除手順（D14/ADR 013）
-- [ ] no-store/Bypassの`/healthz`外形監視、デプロイ後smoke test、Tunnel/token漏洩時runbook（D14/ADR 013）
-- [ ] CI/CD（GitHub Actions → flyctl deploy）
-- [ ] UptimeRobotによる`/healthz`外形監視と定期ジョブHeartbeat監視（アプリPushを主通知、メールを予備）。routeはGETのみでHEADは405になるため、外形監視はGETで行う
+- [x] OGフォント: `fonts-noto-cjk`・`fonts-noto-cjk-extra`・`fontconfig`、SemiBold選択と日本語serifのビルド検査（2026-10-05、5-A）
+- [x] Uvicornの`--no-access-log`とアプリログのIP・検索語非記録確認（2026-10-05、5-A）
+- [x] 日次SQLite Online Backup・標準SigV4 PUT・成功Heartbeat、ランキングCLIのsupercronic登録・flock・timeout・成功Heartbeat（2026-10-06、5-B）
+- [x] supervisorctlによる停止・DB/WAL/SHM退避・入れ替え・migration・再開のローカル復旧演習（2026-10-06、5-C）
+- [x] Cloudflare・Fly・R2・UptimeRobotの設定、smoke test、DB配置・復旧、token漏洩時runbook（2026-10-06、5-C）
+- [x] CI workflow（main push/PRでlint・format・pytest）と手動deploy workflow（2026-10-06、5-C。YAML検証済み、GitHub上の実行は未検証）
+- [ ] Fly app・Volume `data`・secretsの作成、初回デプロイ。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §1・§5.1
+- [ ] R2バケット限定資格情報・daily/の30日Lifecycle・実PUT、ジョブHeartbeatとPush主/メール予備通知の受信確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §3・§4.1
+- [ ] R2から取得してのリリース前復元確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §7・§6
+- [ ] Cloudflare DNS/SSL/Tunnel route・Cache Rules（OG/sitemap/robotsを含む）・WAF・Access。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §2（§2.1のみ切替前、他は切替時）
+- [ ] Tunnel接続・Fly public IP/serviceなしの実確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §5.1
+- [ ] GET /healthzの5分外形監視・no-store/Bypass・本番smoke test、GitHub deploy token登録とworkflow実行。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §4.2・§5.2
 
 ### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
+
+実行順はrunbook §1 → §2.1 → §3 → §4.1 → §5.1（切替前）、最終移行§6、切替§2.2〜2.6・§4.2、検収§5.2。復旧は§7、token漏洩時は§8。
+
 - [ ] HTMLエラーページの要否を判断する。現状は404・429などがFastAPI既定のJSONを返す（3-Dからの持ち越し）
 - [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する（[URL契約表](url-contract.md)§9）
 - [ ] 旧ランキングとの一度限りの同値確認を行う。旧定期再計算（`0 3,15 * * *`、UTC）の直後に原本ダンプと旧3表（`quote_ranking_scores`・`author_rankings`・`category_rankings`）を読み取り専用で取得し、Git管理外の`meigen-fly-private/source-db/`へ保存する。SQLiteを再構築して旧`refreshed_at`を`now`に再計算し、score・likes件数・rankを比較する（浮動小数は相対誤差）。4-B時点では旧3表のexportがなく、取得時刻も定期再計算直後ではなかったため未実施
-- [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する
-- [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する
+- [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する（runbook §5.1）
+- [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する（runbook §6）
 - [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_TEAM_DOMAIN`・`CF_ACCESS_AUD`・`SECRET_KEY`・`CF_ZONE_ID`・`CF_API_TOKEN`を設定し、`ADMIN_DEV_EMAIL`が設定されていないことを確認する
-- [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮）
-- [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する
+- [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮、runbook §2.2〜2.6）
+- [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する（runbook §5.2）
 - [ ] 本物のCloudflare Accessで許可・拒否とJWT検証を確認し、管理更新とランキング再計算から本物のCloudflare purge APIが呼ばれて更新内容が反映されることを確認する
 - [ ] プライバシーポリシーの記述（通常ログにIP・検索語を残さない、管理画面の認証、サーバーへの直接アクセス防止）が本番の設定と一致することを確認する
-- [ ] Tunnel経由の正常性確認後、Flyのpublic service/IPを削除する
+- [ ] 初回デプロイからFlyのpublic service/IPなしを確認し、Tunnel経由でも正常性を検収する（runbook §5.1・§5.2。ADR 013の旧二段階案は追記で更新）
 - [ ] 旧環境1〜2週間維持後に廃止
 
 ## 9. リスクと対策
@@ -376,5 +383,7 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ5（デプロイ・インフラ）のチェックリストを上から実施する
-2. フェーズ5完了後、フェーズ6の最終移行と本番リリースを行う
+1. フェーズ6準備: runbook §1〜§4の切替前の外部設定（Fly app/Volume、Tunnel connector、R2、Heartbeat）と§5.1のsecrets・初回デプロイ・内部確認・実ジョブ通知を管理者が実施する
+2. runbook §7で本物のR2復旧を検収し、旧環境書き込み凍結後にmigration-runbook §5を再実行して§6の最終移行を行う
+3. runbook §2.2〜2.6・§4.2でAccess・DNS/Tunnel・キャッシュ・WAF・外形監視を切り替え、§5.2で本番検収する。手動deploy workflowは切替後から使用する
+4. 5-Cレビュー後、next-session.mdの有用な申し送りが計画書・ADR・runbookに残っていることを確認し、別コミットで削除する

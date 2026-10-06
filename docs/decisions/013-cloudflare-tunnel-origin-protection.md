@@ -70,3 +70,9 @@
 - [Fly.io: Connect to an App Service](https://fly.io/docs/networking/app-services/)
 - [Fly.io: App configuration](https://fly.io/docs/reference/configuration/)
 - [Fly.io: Health Checks](https://fly.io/docs/reference/health-checks/)
+
+## 追記（2026-10-06、フェーズ5-C）
+
+初回切替について、上の「公開Fly service/IPを維持した二段階」の記述は旧案である。5-Aで公開serviceなし・Uvicorn loopbackだけの設定が完成したため、初回デプロイから公開入口を持たず、管理経路で内部確認する。public IPが割り当てられた場合も初回デプロイ後に解放し、Tunnel routeの公開前にserviceなしを確認する。旧サイトと同じzoneを使うため、Tunnel connectorだけを先に接続し、www route・DNS・Access・Cache Rules・WAFはフェーズ6の切替時に設定する。
+
+Access applicationを切替時に作るため、初回デプロイ時の`CF_ACCESS_AUD`は実JWTと一致しない`pending-cutover`とし、管理画面を閉じる。切替時に実AUDへ更新してからrouteを公開する。秘密情報や認証検証の実装は変更しない。[運用runbook](../operations-runbook.md)を実行手順の正本とする。

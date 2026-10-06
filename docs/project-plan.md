@@ -322,7 +322,7 @@ meigen-fly/
 
 ### フェーズ5: デプロイ・インフラ
 
-**リポジトリ側は完了（2026-10-06、5-C）**。[運用runbook](operations-runbook.md)の外部サービス手順は未検証。管理者の外部設定・実通信の検収は以下の未完項目に残す。
+**リポジトリ側は完了（2026-10-06、5-Cレビュー修正済み）**。[運用runbook](operations-runbook.md)の外部サービス手順は未検証。管理者の外部設定・実通信の検収は以下の未完項目に残す。
 
 - [x] Dockerfile / fly.toml / Volumeマウント設定（2026-10-05、5-A）
 - [x] OGフォント: `fonts-noto-cjk`・`fonts-noto-cjk-extra`・`fontconfig`、SemiBold選択と日本語serifのビルド検査（2026-10-05、5-A）
@@ -386,4 +386,3 @@ meigen-fly/
 1. フェーズ6準備: runbook §1〜§4の切替前の外部設定（Fly app/Volume、Tunnel connector、R2、Heartbeat）と§5.1のsecrets・初回デプロイ・内部確認・実ジョブ通知を管理者が実施する
 2. runbook §7で本物のR2復旧を検収し、旧環境書き込み凍結後にmigration-runbook §5を再実行して§6の最終移行を行う
 3. runbook §2.2〜2.6・§4.2でAccess・DNS/Tunnel・キャッシュ・WAF・外形監視を切り替え、§5.2で本番検収する。手動deploy workflowは切替後から使用する
-4. 5-Cレビュー後、next-session.mdの有用な申し送りが計画書・ADR・runbookに残っていることを確認し、別コミットで削除する

@@ -113,7 +113,7 @@ def test_success_upload_before_heartbeat(monkeypatch, tmp_path, caplog, endpoint
 
 
 @pytest.mark.parametrize(
-    "failure", ["integrity", "http", "timeout", "network", "status", "missing-db"]
+    "failure", ["integrity", "http", "timeout", "network", "missing-db"]
 )
 def test_failures_skip_heartbeat_and_cleanup(monkeypatch, caplog, environment, failure):
     def unexpected(*_args, **_kwargs):
@@ -152,8 +152,6 @@ def test_failures_skip_heartbeat_and_cleanup(monkeypatch, caplog, environment, f
     else:
 
         def fail(*_args, **_kwargs):
-            if failure == "status":
-                return Response(500)
             errors = {
                 "http": HTTPError("https://r2.example", 500, "secret-key", {}, None),
                 "timeout": TimeoutError("secret-key"),
@@ -165,7 +163,10 @@ def test_failures_skip_heartbeat_and_cleanup(monkeypatch, caplog, environment, f
     assert cli.main() != 0
     assert "backup failed" in caplog.text
     assert "secret-key" not in caplog.text
+    if failure == "integrity":
+        assert "backup integrity_check failed" in caplog.text
     if failure == "missing-db":
+        assert "unable to open database file" in caplog.text
         assert not missing.exists()
 
 
@@ -222,3 +223,29 @@ def test_backup_heartbeat_failure_keeps_success(monkeypatch):
 
     monkeypatch.setattr(heartbeat, "urlopen", fail)
     assert cli.main() == 0
+
+
+@pytest.mark.parametrize("message", ["database is locked", "disk I/O error"])
+def test_sqlite_failure_reason_is_logged(monkeypatch, caplog, message):
+    def fail(_destination):
+        raise sqlite3.OperationalError(message)
+
+    monkeypatch.setattr(cli, "backup_database", fail)
+    monkeypatch.setattr(cli, "send_heartbeat", lambda *_a: pytest.fail("heartbeat"))
+    assert cli.main() == 1
+    assert message in caplog.text
+
+
+def test_local_configuration_failure_reason_is_logged(monkeypatch, caplog):
+    monkeypatch.setenv("BACKUP_R2_ENDPOINT", "https://r2.example/private-token")
+    assert cli.main() == 1
+    assert "invalid BACKUP_R2_ENDPOINT" in caplog.text
+    assert "private-token" not in caplog.text
+
+
+def test_library_value_error_does_not_leak_endpoint(monkeypatch, caplog):
+    # urlsplit includes the netloc in its NFKC normalization error message.
+    monkeypatch.setenv("BACKUP_R2_ENDPOINT", "https://private-token／r2.example")
+    assert cli.main() == 1
+    assert "ValueError" in caplog.text
+    assert "private-token" not in caplog.text

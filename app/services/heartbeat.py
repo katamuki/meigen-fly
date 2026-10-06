@@ -13,10 +13,8 @@ def send_heartbeat(job: str, url: str | None) -> None:
         logger.info("heartbeat skipped job=%s: URL is not configured", job)
         return
     try:
-        with urlopen(Request(url, method="GET"), timeout=10) as response:
-            if not 200 <= response.status < 300:
-                logger.warning("heartbeat failed job=%s HTTP %d", job, response.status)
-                return
+        with urlopen(Request(url, method="GET"), timeout=10):
+            pass
     except HTTPError as error:
         logger.warning("heartbeat failed job=%s HTTP %d", job, error.code)
         return

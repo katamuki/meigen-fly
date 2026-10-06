@@ -145,28 +145,35 @@ def get_search_rate_limit() -> tuple[int, float]:
 
 
 def get_backup_r2_endpoint() -> str | None:
+    """Return the R2 origin without a trailing slash."""
     return os.getenv("BACKUP_R2_ENDPOINT", "").strip().rstrip("/") or None
 
 
 def get_backup_r2_bucket() -> str | None:
+    """Return the backup destination bucket."""
     return os.getenv("BACKUP_R2_BUCKET", "").strip() or None
 
 
 def get_backup_r2_prefix() -> str:
+    """Return the object prefix, defaulting only when unset."""
     return os.getenv("BACKUP_R2_PREFIX", "daily/")
 
 
 def get_backup_r2_access_key_id() -> str | None:
+    """Return the access key ID for backup uploads."""
     return os.getenv("BACKUP_R2_ACCESS_KEY_ID", "").strip() or None
 
 
 def get_backup_r2_secret_access_key() -> str | None:
+    """Return the secret access key for backup uploads."""
     return os.getenv("BACKUP_R2_SECRET_ACCESS_KEY", "") or None
 
 
 def get_uptimerobot_backup_heartbeat_url() -> str | None:
+    """Return the optional secret backup heartbeat URL."""
     return os.getenv("UPTIMEROBOT_BACKUP_HEARTBEAT_URL", "").strip() or None
 
 
 def get_uptimerobot_ranking_heartbeat_url() -> str | None:
+    """Return the optional secret ranking heartbeat URL."""
     return os.getenv("UPTIMEROBOT_RANKING_HEARTBEAT_URL", "").strip() or None

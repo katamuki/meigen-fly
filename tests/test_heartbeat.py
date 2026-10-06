@@ -66,10 +66,3 @@ def test_failure_does_not_raise_or_leak(monkeypatch, caplog, error):
     assert "failed job=backup_sqlite" in caplog.text
     assert "heartbeat.example" not in caplog.text
     assert "private-token" not in caplog.text
-
-
-def test_non_success_response(monkeypatch, caplog):
-    monkeypatch.setattr(heartbeat, "urlopen", lambda *_a, **_k: Response(503))
-    heartbeat.send_heartbeat("backup_sqlite", SECRET_URL)
-    assert "HTTP 503" in caplog.text
-    assert SECRET_URL not in caplog.text

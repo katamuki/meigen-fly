@@ -34,6 +34,10 @@ from app.services.heartbeat import send_heartbeat
 logger = logging.getLogger("backup_sqlite")
 
 
+class BackupValidationError(ValueError):
+    """A local validation failure whose message contains no configuration values."""
+
+
 def sign_put(
     path: str,
     headers: dict[str, str],
@@ -83,7 +87,7 @@ def backup_database(destination: Path) -> None:
     """Open the existing source read-only and verify its online backup."""
     url = make_url(get_database_url())
     if url.drivername != "sqlite" or not url.database or url.database == ":memory:":
-        raise ValueError("DATABASE_URL must name an SQLite file")
+        raise BackupValidationError("DATABASE_URL must name an SQLite file")
     source_uri = Path(url.database).resolve().as_uri() + "?mode=ro"
     with (
         closing(sqlite3.connect(source_uri, uri=True)) as source,
@@ -91,7 +95,7 @@ def backup_database(destination: Path) -> None:
     ):
         source.backup(target)
         if target.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
-            raise ValueError("backup integrity_check failed")
+            raise BackupValidationError("backup integrity_check failed")
 
 
 def main() -> int:
@@ -120,7 +124,7 @@ def main() -> int:
             or parsed.query
             or parsed.fragment
         ):
-            raise ValueError("invalid BACKUP_R2_ENDPOINT")
+            raise BackupValidationError("invalid BACKUP_R2_ENDPOINT")
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         key = f"{get_backup_r2_prefix()}app-{timestamp}.db"
         path = quote(f"/{settings['BACKUP_R2_BUCKET']}/{key}", safe="/-.")
@@ -145,10 +149,8 @@ def main() -> int:
             headers["Content-Length"] = str(len(body))
             request = Request(endpoint + path, data=body, headers=headers, method="PUT")
             stage = "R2 PUT"
-            with urlopen(request, timeout=60) as response:
-                if not 200 <= response.status < 300:
-                    logger.error("backup failed: PUT HTTP %d", response.status)
-                    return 1
+            with urlopen(request, timeout=60):
+                pass
             logger.info(
                 "backup succeeded key=%s bytes=%d duration_seconds=%.3f",
                 key,
@@ -159,7 +161,10 @@ def main() -> int:
     except HTTPError as error:
         logger.error("backup failed: PUT HTTP %d", error.code)
         return 1
-    except (URLError, HTTPClientException, OSError, sqlite3.Error, ValueError) as error:
+    except (sqlite3.Error, BackupValidationError) as error:
+        logger.error("backup failed stage=%s: %s", stage, error)
+        return 1
+    except (URLError, HTTPClientException, OSError, ValueError) as error:
         # Network exception messages can contain credentials or signed URLs.
         logger.error("backup failed stage=%s: %s", stage, type(error).__name__)
         return 1

@@ -39,13 +39,13 @@ Cloudflareのzone OverviewからZone IDを控える。My Profile / API Tokensで
 
 Zero Trust / Access controls / ApplicationsでSelf-hosted applicationを作る。public hostnameを `www.meigensyu.com`、pathを `/admin`（配下も保護）とする。`/login`やサイト全体は含めない。Allow policyのIncludeは **Emails: 管理者メール1件の完全一致**。IdPはGoogleだけを選び、他のAllow・Bypass policyは追加しない。アプリのAUD tagを控える。[公式Access設定](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
 
-§5.1と同じ標準入力方式で `CF_ACCESS_AUD`を実値へ更新する（Machineが再起動する）。`CF_ACCESS_TEAM_DOMAIN`も確認する。`/login`はアプリ側で`/admin`へ302する。
+§5.1の非表示入力・標準入力方式を使い、登録コマンドを `fly secrets import --app meigensyu`（`--stage`なし）として `CF_ACCESS_AUD`を登録する。Machineが再起動して実AUDが反映されたことを確認してからrouteを公開する。`CF_ACCESS_TEAM_DOMAIN`も確認する。`/login`はアプリ側で`/admin`へ302する。
 
-初回デプロイ前に実AUDを入れる指示と、Access作成を切替時まで延期する指示は両立しない。そのため切替前だけ `CF_ACCESS_AUD=pending-cutover` とし、実JWTと一致しない値で管理画面を閉じる。切替時に必ず実値へ置換する。`ADMIN_DEV_EMAIL`は本番で設定しない。
+`CF_ACCESS_AUD`はAccess applicationを作るこの段階で初めて登録する。切替前は未設定とし、ADR 012の設定不足時の拒否により管理画面は403になる。`ADMIN_DEV_EMAIL`は本番で設定しない。
 
 ### 2.3 切替時: wwwのTunnel route・DNS・SSL
 
-旧 `www` のレコードの種類・値・TTLを控える。DNS切替前に旧DNS側でTTLを短縮し、既存TTLの経過を待つ。TunnelのPublished applicationに **`www.meigensyu.com` → `http://127.0.0.1:8000`** を1つだけ追加する。既存wwwレコードが衝突するので、旧レコードを削除してTunnelのCNAME（`<tunnel-id>.cfargotunnel.com`、proxied）に置換する。wildcardは作らず、未一致routeのcatch-allは404のまま。HTTP Host Headerの上書きは設定しない。
+旧 `www` のレコードの種類・値・TTLを控える。Cloudflare DNSの既存`www`レコードがDNS onlyなら、DNS切替前にTTLを短縮し、変更前のTTLの経過を待つ。proxiedならTTLはAutoで変更できないため、短縮は不要。[公式TTL仕様](https://developers.cloudflare.com/dns/manage-dns-records/reference/ttl/) TunnelのPublished applicationに **`www.meigensyu.com` → `http://127.0.0.1:8000`** を1つだけ追加する。既存wwwレコードが衝突するので、旧レコードを削除してTunnelのCNAME（`<tunnel-id>.cfargotunnel.com`、proxied）に置換する。wildcardは作らず、未一致routeのcatch-allは404のまま。HTTP Host Headerの上書きは設定しない。
 
 edge証明書がwwwとapexをカバーし有効であることをSSL/TLS / Edge Certificatesで確認する。TunnelからlocalhostはHTTPなのでorigin証明書は作らない。
 
@@ -164,7 +164,7 @@ URL `https://www.meigensyu.com/healthz`、HTTP method **GET**（HEADは405）、
 | `CF_ZONE_ID` | §2.1 zone Overview | いいえ |
 | `CF_API_TOKEN` | §2.1 Cache Purge限定token | はい |
 | `CF_ACCESS_TEAM_DOMAIN` | §2.1 `https://<team>.cloudflareaccess.com` | いいえ |
-| `CF_ACCESS_AUD` | 初回のみ `pending-cutover`、切替時§2.2のAUD | いいえ |
+| `CF_ACCESS_AUD` | 初回は登録しない。切替時§2.2でAccess作成後のAUDを登録 | いいえ |
 | `SECRET_KEY` | 手元で `openssl rand -hex 32` を生成 | はい |
 | `BACKUP_R2_ENDPOINT` | §3 account IDから作るendpoint | いいえ |
 | `BACKUP_R2_BUCKET` | §3 `meigensyu-backups` | いいえ |
@@ -173,18 +173,18 @@ URL `https://www.meigensyu.com/healthz`、HTTP method **GET**（HEADは405）、
 | `BACKUP_R2_SECRET_ACCESS_KEY` | §3 S3 Secret Access Key | はい |
 | `UPTIMEROBOT_BACKUP_HEARTBEAT_URL` | §4.1 backup monitor | はい |
 | `UPTIMEROBOT_RANKING_HEARTBEAT_URL` | §4.1 ranking monitor | はい |
-| `GA_MEASUREMENT_ID` | GA4は未導入。導入時に取得 | いいえ |
-| `ADSENSE_PUBLISHER_ID` | AdSenseは未導入。導入時に取得 | いいえ |
+| `GA_MEASUREMENT_ID` | 未導入のため登録しない | いいえ |
+| `ADSENSE_PUBLISHER_ID` | 未導入のため登録しない | いいえ |
 | `ADMIN_DEV_EMAIL` | 開発専用。**本番で設定しない** | メールアドレス |
 
-任意のGA4・AdSense IDは空値で登録する。以下を変数ごとに繰り返す。`fly secrets set`はMachineを再起動するため、初回は全変数を設定後にデプロイする。稼働後の変更は停止時間を見込む。秘密をコマンド引数やshell historyへ書かず、手元のbashで非表示入力し標準入力から登録する。デバッグ出力（`set -x`）は使わない。[公式secrets](https://fly.io/docs/apps/secrets/)
+初回は`CF_ACCESS_AUD`・`GA_MEASUREMENT_ID`・`ADSENSE_PUBLISHER_ID`・`ADMIN_DEV_EMAIL`を除き、以下を変数ごとに繰り返す。標準入力からの登録には`fly secrets import`を使う。初回は`--stage`でMachineへの反映を延期し、必要な全変数を登録後にデプロイする。稼働後に即時反映する場合は`--stage`を付けずにimportする。この場合はMachineが再起動するため停止時間を見込む。秘密をコマンド引数やshell historyへ書かず、手元のbashで非表示入力し標準入力から登録する。デバッグ出力（`set -x`）は使わない。[公式secrets import](https://docs.fly.io/flyctl/cmd/fly_secrets_import)・[公式secrets](https://fly.io/docs/apps/secrets/)
 
 ```bash
 bash
 read -r -p 'Variable name: ' secret_name
 read -r -s -p 'Value: ' secret_value
 printf '\n'
-printf '%s=%s\n' "$secret_name" "$secret_value" | fly secrets set --app meigensyu
+printf '%s=%s\n' "$secret_name" "$secret_value" | fly secrets import --app meigensyu --stage
 unset secret_name secret_value
 exit
 ```
@@ -311,7 +311,7 @@ grep -m 2 'class="mg-quote"' /tmp/restored-quotes.html
 ls -l "$archive_dir"
 ```
 
-手元で検査した件数と一致し、公開ページに名言が表示されることをブラウザまたはHTML本文で確認する。退避した旧ファイルを残す。失敗時は停止状態で原因を確認し、元DBへ戻すなら新DBのWAL/SHMも別に退避し、退避した**旧DB・旧WAL・旧SHMの組**を元に戻す。新旧のWALを混ぜない。migrationが失敗したDBのままUvicornを起動しない。
+手元で検査した件数と一致し、公開ページに名言が表示されることをブラウザまたはHTML本文で確認する。退避した旧ファイルを残す。再接続した場合は`$archive_dir`が消えているため、`ls -d /data/retired-*`で対象の退避先を確かめる。失敗時は停止状態で原因を確認し、元DBへ戻すなら新DBのWAL/SHMも別に退避し、退避した**旧DB・旧WAL・旧SHMの組**を元に戻す。新旧のWALを混ぜない。migrationが失敗したDBのままUvicornを起動しない。
 
 ## 7. R2からの復旧
 
@@ -344,4 +344,4 @@ exit
 
 ## 8. Tunnel tokenが漏れた場合
 
-Zero Trustの対象Tunnelでtokenを更新し、§5.1の非表示入力・標準入力方式で `fly secrets set` に新しい `TUNNEL_TOKEN`を登録する（Machineが再起動する）。Zero Trust dashboardから旧tokenの確立済みconnectionを切断し、`fly logs --app meigensyu`の接続登録、dashboardのHEALTHY、外部GET healthzを確認する。tokenはログやチケットに貼らない。[公式token更新](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/remote-tunnel-permissions/)
+Zero Trustの対象Tunnelでtokenを更新し、§5.1の非表示入力・標準入力方式で、登録コマンドを `fly secrets import --app meigensyu`（`--stage`なし）として新しい `TUNNEL_TOKEN`を登録する（Machineが再起動する）。Zero Trust dashboardから旧tokenの確立済みconnectionを切断し、`fly logs --app meigensyu`の接続登録、dashboardのHEALTHY、外部GET healthzを確認する。tokenはログやチケットに貼らない。[公式token更新](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/remote-tunnel-permissions/)

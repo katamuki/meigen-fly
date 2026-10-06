@@ -1,15 +1,33 @@
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from fastapi.responses import HTMLResponse
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
 from app import main
-from app.db import create_db_engine
+from app.db import create_db_engine, get_connection, metadata
 from app.middleware import cache_control_for, response_headers_middleware
 
 client = TestClient(main.app, base_url="http://localhost:8000")
+
+
+@pytest.fixture(autouse=True)
+def empty_database(tmp_path: Path) -> Iterator[None]:
+    """Serve pages from an empty schema so tests never depend on data/app.db."""
+    test_engine = create_db_engine(f"sqlite:///{tmp_path / 'app.db'}")
+    metadata.create_all(test_engine)
+
+    def override_connection() -> Iterator:
+        with test_engine.begin() as connection:
+            yield connection
+
+    main.app.dependency_overrides[get_connection] = override_connection
+    yield
+    main.app.dependency_overrides.clear()
+    test_engine.dispose()
 
 
 def test_home_renders_template_with_cache_and_security_headers() -> None:

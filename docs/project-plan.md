@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-10-06（フェーズ5-Cリポジトリ側完了）
+> - 更新日: 2026-10-07（フェーズ6準備の実機確認を反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -331,11 +331,15 @@ meigen-fly/
 - [x] supervisorctlによる停止・DB/WAL/SHM退避・入れ替え・migration・再開のローカル復旧演習（2026-10-06、5-C）
 - [x] Cloudflare・Fly・R2・UptimeRobotの設定、smoke test、DB配置・復旧、token漏洩時runbook（2026-10-06、5-C）
 - [x] CI workflow（main push/PRでlint・format・pytest）と手動deploy workflow（2026-10-06、5-C。YAML検証済み、GitHub上の実行は未検証）
-- [ ] Fly app・Volume `data`・secretsの作成、初回デプロイ。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §1・§5.1
+- [x] Fly app `meigensyu`（既存、`katamuki-org`）とVolume `data`（1GB、`nrt`、1つ）の確認・作成（2026-10-06、runbook §1）
+- [x] `TUNNEL_TOKEN`・`SECRET_KEY`登録、初回デプロイ、`nrt`のMachine 1台と内部healthz、手元DBの初回配置、localhost・一時的な`trycloudflare.com`での画面確認（2026-10-07、runbook §5.1・§6）
+- [ ] 残りのFly secrets登録、定期ジョブ再開と内部確認（runbook §5.1）
 - [ ] R2バケット限定資格情報・daily/の30日Lifecycle・実PUT、ジョブHeartbeatとPush主/メール予備通知の受信確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §3・§4.1
 - [ ] R2から取得してのリリース前復元確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §7・§6
 - [ ] Cloudflare DNS/SSL/Tunnel route・Cache Rules（OG/sitemap/robotsを含む）・WAF・Access。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §2（§2.1のみ切替前、他は切替時）
-- [ ] Tunnel接続・Fly public IP/serviceなしの実確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §5.1
+- [x] Cloudflare Tunnel `meigensyu`の作成、公開routeなし、team domainの控え、Google IdPの接続テスト成功（2026-10-07、runbook §2.1。connector接続は初回デプロイ後）
+- [ ] `meigensyu.com`のCloudflare zone追加、Zone ID・Cache Purge token取得。現時点の権威DNSは`name-services.com`で、Cloudflareにzone未登録。旧サイトを保つためネームサーバー変更は切替時に行う（runbook §2.1・§2.3）
+- [x] Tunnel connectorの接続ログ、Fly public IP/serviceなしを実確認（2026-10-07、runbook §5.1。Zero Trust画面のHEALTHYは未確認）
 - [ ] GET /healthzの5分外形監視・no-store/Bypass・本番smoke test、GitHub deploy token登録とworkflow実行。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §4.2・§5.2
 
 ### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
@@ -345,14 +349,14 @@ meigen-fly/
 - [ ] HTMLエラーページの要否を判断する。現状は404・429などがFastAPI既定のJSONを返す（3-Dからの持ち越し）
 - [ ] ローカルで本番相当データの移行、主要導線、URL互換を確認する（[URL契約表](url-contract.md)§9）
 - [ ] 旧ランキングとの一度限りの同値確認を行う。旧定期再計算（`0 3,15 * * *`、UTC）の直後に原本ダンプと旧3表（`quote_ranking_scores`・`author_rankings`・`category_rankings`）を読み取り専用で取得し、Git管理外の`meigen-fly-private/source-db/`へ保存する。SQLiteを再構築して旧`refreshed_at`を`now`に再計算し、score・likes件数・rankを比較する（浮動小数は相対誤差）。4-B時点では旧3表のexportがなく、取得時刻も定期再計算直後ではなかったため未実施
-- [ ] 本番Machineへデプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する（runbook §5.1）
+- [x] 本番Machineへ初回デプロイし、Flyの管理経路からUvicorn・SQLite・migrationを確認する（2026-10-07、runbook §5.1）
 - [ ] DNS切替直前に旧環境のAdmin・いいね書き込みを短時間凍結し、最終データを移行する（runbook §6）
 - [ ] 本番の許可Host・`PUBLIC_ORIGIN`・`CF_ACCESS_TEAM_DOMAIN`・`CF_ACCESS_AUD`・`SECRET_KEY`・`CF_ZONE_ID`・`CF_API_TOKEN`を設定し、`ADMIN_DEV_EMAIL`が設定されていないことを確認する
 - [ ] `www`のDNS/Tunnel routeを切り替える（TTL事前短縮、runbook §2.2〜2.6）
 - [ ] 公開ページ、管理画面、いいね、キャッシュヘッダ、`/healthz`を本番URLで確認する（runbook §5.2）
 - [ ] 本物のCloudflare Accessで許可・拒否とJWT検証を確認し、管理更新とランキング再計算から本物のCloudflare purge APIが呼ばれて更新内容が反映されることを確認する
 - [ ] プライバシーポリシーの記述（通常ログにIP・検索語を残さない、管理画面の認証、サーバーへの直接アクセス防止）が本番の設定と一致することを確認する
-- [ ] 初回デプロイからFlyのpublic service/IPなしを確認し、Tunnel経由でも正常性を検収する（runbook §5.1・§5.2。ADR 013の旧二段階案は追記で更新）
+- [ ] 初回デプロイでFlyのpublic service/IPなし、Tunnel connector接続を確認済み。切替時に本番`www`のTunnel route経由でも正常性を検収する（runbook §5.1・§5.2）
 - [ ] 旧環境1〜2週間維持後に廃止
 
 ## 9. リスクと対策
@@ -383,6 +387,6 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. フェーズ6準備: runbook §1〜§4の切替前の外部設定（Fly app/Volume、Tunnel connector、R2、Heartbeat）と§5.1のsecrets・初回デプロイ・内部確認・実ジョブ通知を管理者が実施する
+1. Fly初回デプロイと非公開・一時公開プレビューは完了。既存`www.meigensyu.com`を保ったまま、Cloudflare MFA・zone追加時期、R2・Heartbeat・Fly secretsの残りを確認し、定期ジョブと通知を検証する
 2. runbook §7で本物のR2復旧を検収し、旧環境書き込み凍結後にmigration-runbook §5を再実行して§6の最終移行を行う
 3. runbook §2.2〜2.6・§4.2でAccess・DNS/Tunnel・キャッシュ・WAF・外形監視を切り替え、§5.2で本番検収する。手動deploy workflowは切替後から使用する

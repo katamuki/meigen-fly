@@ -1,29 +1,37 @@
 # 運用runbook
 
-更新日: 2026-10-06（フェーズ5-C）。単一Machine・単一Volume、短い停止を許容する。
+更新日: 2026-10-07（フェーズ6準備の実機確認を反映）。単一Machine・単一Volume、短い停止を許容する。
 
-**外部サービスの操作は全章未検証**。Fly・Cloudflare・R2・UptimeRobot・GitHubはこの作業では操作していない。公式資料で仕様を確認した箇所にはリンクを付けた。§6のコンテナ内DB入れ替えだけはローカルで演習済み（R2取得は手元のDBで代用）。
+**実機検証済みは§1、§2.1・§5.1の一部、§6の初回DB配置**。Fly Machineへの初回デプロイ、Tunnel connectorの接続、内部healthz、手元DBの配置、localhostと一時的な`trycloudflare.com`での画面表示を確認した。R2、UptimeRobot、Cloudflare zone・API token、GitHubの操作は未検証。§7のR2復旧演習も未実施。公式資料で仕様を確認した箇所にはリンクを付けた。
 
 実行順は **§1 → §2.1 → §3 → §4.1 → §5.1（secrets・初回デプロイ）**。切替時は **旧書き込み凍結・§6 → §2.2〜2.6 → §4.2 → §5.2**。§7・§8は障害時に使う。コマンドはリポジトリ直下から実行する。`<...>`は管理者が得た値に置換し、秘密の実値を資料・Git・ログへ貼らない。
+
+2026-10-07に既存`www`を維持したままFlyの非公開プレビューと一時的な外部プレビューを実施した。残作業は[次回セッション指示](next-session.md#次回の開始地点)に記載した。
 
 DNS切替までは `www.meigensyu.com` と `meigensyu.com` が旧Next.jsサイトを指す。zone全体の変更は旧サイトにも効くので、Cache Rules・Redirect Ruleも**切替時に作成する**。切替前にpublic hostnameをTunnelへ付けない。WAF・Access・外形監視も切替時に行う。
 
 ## 1. 初回セットアップ（Fly.io、切替前）
 
+**検証済み（2026-10-06）**。`meigensyu` appは既に`katamuki-org`に存在し、Image・Machine・Volumeはなかった。非対話の`fly apps create meigensyu`はorg slugの指定を要求して終了したため、既存appを管理者の確認を得て使用した。`data` Volumeを`nrt`に1つ作成し、`fly volumes list`で確認した（ID `vol_v3gkk0wjyy2137o4`、1GB、encrypted）。この時点ではMachineはない。
+
 管理者の手元にflyctlを導入し `fly auth login` する。`fly launch` は既存設定を書き換えるため使わない。
 
 ```bash
-fly apps create meigensyu
+fly apps create meigensyu --org <org-slug>
 fly volumes create data --app meigensyu --region nrt --size 1
 ```
 
-名前が取得できなければ別名でappを作り、`fly.toml`の`app`だけを変更する。本書の`--app meigensyu`もその名前へ置き換える。リージョン・512MB・マウント・restart設定は変更しない。
+名前が取得できなければ別名でappを作り、`fly.toml`の`app`だけを変更する。本書の`--app meigensyu`もその名前へ置き換える。リージョン・512MB・マウント・restart設定は変更しない。`<org-slug>`には管理者が選んだorgを指定する。既存appがあれば重複作成せず、owner・Machine・Volumeの状態を確認する。
 
 まだデプロイしない。次は§2.1でTunnelを作り、§3・§4.1を順に設定してから§5.1へ進む。
 
 ## 2. Cloudflare
 
 ### 2.1 切替前: Tunnelと資格情報だけを準備
+
+**一部検証済み（2026-10-07）**。`meigensyu` Tunnelを作成し、connector tokenを管理者が保管した。公開アプリケーションrouteは空。初回デプロイ後、`fly logs`で`Registered tunnel connection`を4本確認した（Zero Trust画面のHEALTHY表示は未確認）。team domainを管理者が控え、Google IdPを追加して`Your connection works!`を確認した。GoogleアカウントのMFAは未確認。Zone IDとCache Purge tokenは未取得。
+
+**実機差分**: `meigensyu.com`はまだCloudflareのDomainsに追加されていない。2026-10-07に公開DNSを確認した時点の権威ネームサーバーは`dns1`〜`dns5.name-services.com`、`www`はVercel向けCNAMEだった。Zone IDはCloudflare zoneを追加するまで取得できない。切替前にzoneを追加する場合も、旧サイト稼働中はドメイン登録先のネームサーバーを変更しない。既存DNSレコードをすべて確認・反映してから切替日に委任を変更する。FreeプランのzoneはPending Nameserver Updateが28日を超えると削除されるため、作成日と切替日を管理する。[公式Pending zone](https://developers.cloudflare.com/dns/zone-setups/troubleshooting/pending-nameservers/)・[公式Zone ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)
 
 Zero TrustのNetworks / Connectors / Cloudflare Tunnelsからremotely-managed Tunnel（名前 `meigensyu`、connector `cloudflared`）を作る。表示されたconnector tokenを`TUNNEL_TOKEN`用に保管する。インストールコマンドは実行せず、既存イメージのcloudflaredを使う。**Published application / public hostnameは空のまま**とする。[公式Tunnel作成手順](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/)
 
@@ -44,6 +52,8 @@ Zero Trust / Access controls / ApplicationsでSelf-hosted applicationを作る�
 `CF_ACCESS_AUD`はAccess applicationを作るこの段階で初めて登録する。切替前は未設定とし、ADR 012の設定不足時の拒否により管理画面は403になる。`ADMIN_DEV_EMAIL`は本番で設定しない。
 
 ### 2.3 切替時: wwwのTunnel route・DNS・SSL
+
+**未検証**。2026-10-07時点ではCloudflareへのzone追加とネームサーバー委任が未実施。切替時は`www`だけでなく、apex・メールなど既存DNSレコードの移行と権威ネームサーバー変更が必要になる。Cloudflareに取り込まれたレコードを現行DNSと照合してから委任を変更する。以下の`www`切替手順は、この前提を満たした後に実施する。
 
 旧 `www` のレコードの種類・値・TTLを控える。Cloudflare DNSの既存`www`レコードがDNS onlyなら、DNS切替前にTTLを短縮し、変更前のTTLの経過を待つ。proxiedならTTLはAutoで変更できないため、短縮は不要。[公式TTL仕様](https://developers.cloudflare.com/dns/manage-dns-records/reference/ttl/) TunnelのPublished applicationに **`www.meigensyu.com` → `http://127.0.0.1:8000`** を1つだけ追加する。既存wwwレコードが衝突するので、旧レコードを削除してTunnelのCNAME（`<tunnel-id>.cfargotunnel.com`、proxied）に置換する。wildcardは作らず、未一致routeのcatch-allは404のまま。HTTP Host Headerの上書きは設定しない。
 
@@ -128,7 +138,7 @@ fly ssh console --app meigensyu
 ```
 
 ```sh
-flock -n /tmp/backup_sqlite.lock timeout 600 python /app/scripts/backup_sqlite.py
+flock -n /tmp/backup_sqlite.lock timeout 600 /app/.venv/bin/python /app/scripts/backup_sqlite.py
 ```
 
 成功ログのキー・バイト数・所要時間と、R2 dashboardに `daily/app-<UTC日時>.db` があることを確認する。これが実R2 PUTの最初の確認。Heartbeat受信も§4.1で確認する。通知が届くまで監視を放置しない。
@@ -155,6 +165,8 @@ URL `https://www.meigensyu.com/healthz`、HTTP method **GET**（HEADは405）、
 ## 5. デプロイとsmoke test
 
 ### 5.1 切替前: secretsと初回デプロイ
+
+**一部検証済み（2026-10-07）**。`TUNNEL_TOKEN`と`SECRET_KEY`を`--stage`で登録。最初のビルドは成功したが、`katamuki-org`の支払い情報未登録でMachine作成に失敗した。管理者が支払い方法を登録後、同じdeployコマンドで`nrt`にMachine `185173db303928`を1台作成した（イメージ363MB、Volume `vol_v3gkk0wjyy2137o4`を接続）。`fly ips list`は空、Machine設定にpublic serviceはない。内部`/healthz`は正しいHostで200、Hostなしで400、SQLiteはWAL。`uvicorn`・`cloudflared`の起動とTunnel接続を確認した。R2・Heartbeatが未設定のため`supervisorctl stop supercronic`で定期ジョブを停止中。Machine再起動時には再度起動するため、残りの設定前に再起動した場合は再停止する。残りのsecrets・ジョブ・通知確認は未検証。
 
 §1・§2.1・§3・§4.1を済ませてから行う。`DATABASE_URL`・`PUBLIC_ORIGIN`は`fly.toml`の`[env]`にあるためsecretsに重ねない。
 
@@ -211,10 +223,18 @@ cd /app
 supervisorctl status
 curl --fail -H 'Host: www.meigensyu.com' http://127.0.0.1:8000/healthz
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host:' http://127.0.0.1:8000/healthz
-flock -n /tmp/refresh_rankings.lock timeout 300 python /app/scripts/refresh_rankings.py
+flock -n /tmp/refresh_rankings.lock timeout 300 /app/.venv/bin/python /app/scripts/refresh_rankings.py
 ```
 
 healthzは200、Hostなしは400。ログとstatusでUvicorn・cloudflared・supercronicの3つを確認し、`Registered tunnel connection`とZero TrustのHEALTHYを確認する。public hostnameはまだ付けない。§3のbackup手動実行とHeartbeat受信も確認する。
+
+#### 切替前の一時プレビュー（2026-10-07検証済み）
+
+手元DBを§6で配置した後、Machine内で`PUBLIC_ORIGIN=http://localhost:8000`のUvicornを一時的にIPv6の8001番で起動し、手元の`fly proxy 8000:8001 --app meigensyu`から`http://localhost:8000/quotes`を確認した。`/healthz`・`/quotes`・静的CSS/JS/画像が200。通常のUvicorn（8000番）と`fly.toml`の`PUBLIC_ORIGIN`は変えていない。
+
+管理者の希望で一時的な外部プレビューも実施した。Machine内で別の`cloudflared tunnel --url http://127.0.0.1:8002`を起動し、発行された`trycloudflare.com`のURLを`PUBLIC_ORIGIN`に指定した一時Uvicornを8002番で起動した。外部HTTPSから`/healthz`・`/quotes`・静的ファイルが200、`/admin`が403、管理者のブラウザでも表示を確認した。Quick Tunnelと一時Uvicornを停止後、URLは530になった。**Quick TunnelはURLを知る人がアクセスできる**ため、確認中だけ起動する。[公式Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+
+どちらの一時プレビューも終了済み。Flyのpublic IP/service、既存`www`とDNSは変更していない。
 
 ### 5.2 切替後: 通常デプロイと確認
 
@@ -243,6 +263,10 @@ fly deploy --app meigensyu --image <直前のイメージ参照> --ha=false --no
 非互換migration後はforward fixを優先し、DB復旧が必要なら対応するアプリ版と§7を使う。イメージrollbackだけではDBは戻らない。切替障害で旧DNSへ戻す場合、新サイトで受けた書き込みを確認し、整合性を確認するまで両サイトの書き込みを止める。
 
 ## 6. SQLiteファイルの配置と入れ替え（最終移行）
+
+**初回配置を検証済み（2026-10-07）**。手元の`data/app.db`を`fly ssh sftp put data/app.db /data/app-incoming.db --app meigensyu`で転送し、SHA-256の一致を確認した。空DBと入れ替えてrevision `0002`、integrity `ok`、authors 774件、quotes 1,831件、内部`/quotes` 200・名言カードありを確認。手元DBのランキング3テーブルは0件で、初回プレビューのRanking表示は集計前。最終移行時には旧環境から最新データを再取得して置き換える。
+
+**実機差分**: `fly ssh console`の対話シェルでは仮想環境が`PATH`に入らず、`alembic`が見つからなかった。以下は`/app/.venv/bin/`を明示する。`set -e`中の`supervisorctl status`は停止中のプロセスがあると非0で終了するため、表示目的なら`|| true`を付ける。
 
 切替直前に旧Admin・いいね書き込みを短時間凍結し、[migration-runbook §5](database/migration-runbook.md#5-再実行可能な手順取得変換投入検証)を再実行して最新の `data/app.db` を作る。§7と同じ手元検査を行う。稼働中のDBファイルを単純コピーしない。
 
@@ -279,8 +303,8 @@ for db_file in app.db app.db-wal app.db-shm; do
     fi
 done
 mv /data/app-incoming.db /data/app.db
-alembic upgrade head
-python - <<'PY'
+/app/.venv/bin/alembic upgrade head
+/app/.venv/bin/python - <<'PY'
 import sqlite3
 with sqlite3.connect('file:/data/app.db?mode=ro', uri=True) as db:
     assert db.execute('PRAGMA integrity_check').fetchall() == [('ok',)]
@@ -298,7 +322,7 @@ status表示でuvicorn・supercronicのSTOPPEDを確認する。
 ```sh
 curl --fail -H 'Host: www.meigensyu.com' http://127.0.0.1:8000/healthz
 curl --fail -H 'Host: www.meigensyu.com' http://127.0.0.1:8000/quotes -o /tmp/restored-quotes.html
-python - <<'PY'
+/app/.venv/bin/python - <<'PY'
 from pathlib import Path
 import sqlite3
 with sqlite3.connect('file:/data/app.db?mode=ro', uri=True) as db:

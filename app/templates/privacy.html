@@ -1,12 +1,13 @@
 {% extends "static_page.html" %}
 {% set page_title = "プライバシーポリシー" %}
 {% set page_description = "名言集.com における個人情報・アクセスデータの取り扱いについて定めています。" %}
-{% set version = "1.1.0" %}
-{% set updated_on = "2026-09-12" %}
-{% set updated_label = "2026年9月12日" %}
+{% set version = "1.2.0" %}
+{% set updated_on = "2026-10-08" %}
+{% set updated_label = "2026年10月8日" %}
 {% set changelog = [
   ("2026-01-17", "2026年1月17日", "初版公開"),
   ("2026-09-12", "2026年9月12日", "サイトの移行に合わせて改定（アクセス解析の記載を削除し、ローカルストレージ・配信基盤・送信元IPの扱いとお問い合わせ窓口を追記）"),
+  ("2026-10-08", "2026年10月8日", "ローカルストレージに保存する値に、いいね済みの名言を追記"),
 ] %}
 {% set contact_form_url = "https://docs.google.com/forms/d/e/1FAIpQLSf_oom4h6KlxqkHd5d6JRVnM_WwQ_6zeo3-4X7WjGYYY38Zhw/viewform" %}
 {% block document %}
@@ -35,6 +36,7 @@
 <p>当サイトは、ブラウザのローカルストレージに次の値を保存します。</p>
 <ul>
 <li><strong>いいねの識別子</strong>（<code>meigen-fly-client-uuid</code>）: ブラウザで生成したランダムな値です。同じ名言への重複したいいねを防ぐために使い、利用者本人の特定には使いません。</li>
+<li><strong>いいね済みの名言</strong>（<code>meigen-fly-liked-quotes</code>）: このブラウザでいいねした名言の番号です。再読み込みしても、いいね済みの表示を保つために使います。</li>
 <li><strong>表示テーマ</strong>（<code>theme</code>）: ライト表示とダーク表示を切り替えたときに、その設定を保存します。</li>
 </ul>
 <p>これらの値は、ブラウザのサイトデータを削除すると端末から消去できます。ローカルストレージを無効にしている場合、いいねの重複防止やテーマの保存が働かないことがあります。</p>

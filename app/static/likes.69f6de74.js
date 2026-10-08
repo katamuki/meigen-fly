@@ -4,6 +4,9 @@
   var storageKey = "meigen-fly-client-uuid";
   var uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
   var pageUuid = null;
+  // Pages are shared CDN HTML, so this browser remembers its own likes.
+  var likedKey = "meigen-fly-liked-quotes";
+  var likedLimit = 500;
 
   function generateUuid() {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -45,6 +48,41 @@
     return value;
   }
 
+  function likedQuotes() {
+    try {
+      var value = JSON.parse(window.localStorage.getItem(likedKey) || "[]");
+      return Array.isArray(value) ? value : [];
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  function rememberLiked(quoteId) {
+    var ids = likedQuotes().filter(function (id) {
+      return id !== quoteId;
+    });
+    ids.push(quoteId);
+    try {
+      window.localStorage.setItem(likedKey, JSON.stringify(ids.slice(-likedLimit)));
+    } catch (_error) {
+      // Without storage the liked state lasts only for this page.
+    }
+  }
+
+  function markLiked(form, count) {
+    var button = form.querySelector("button");
+    if (!button) {
+      return;
+    }
+    button.classList.add("is-liked");
+    button.setAttribute("aria-pressed", "true");
+    if (count) {
+      var label = button.querySelector(".count") || button.lastChild;
+      button.dataset.likeCount = count;
+      label.textContent = Number(count).toLocaleString("en-US");
+    }
+  }
+
   function configure(form) {
     var uuid = clientUuid();
     if (uuid && !form.elements.client_uuid) {
@@ -55,6 +93,12 @@
       form.appendChild(hidden);
     }
     form.addEventListener("submit", function (event) {
+      var current = form.querySelector("button");
+      if (current && current.classList.contains("is-liked")) {
+        // Likes cannot be undone, so a second press sends nothing.
+        event.preventDefault();
+        return;
+      }
       if (!form.elements.client_uuid) {
         return;
       }
@@ -79,6 +123,17 @@
         var replacement = wrapper.firstElementChild;
         form.replaceWith(replacement);
         configure(replacement);
+        var liked = replacement.querySelector("button");
+        if (liked) {
+          liked.classList.add("is-pop");
+        }
+        var quoteId = replacement.dataset.likeQuoteId;
+        rememberLiked(quoteId);
+        document.querySelectorAll('.mg-like-form[data-like-quote-id="' + quoteId + '"]').forEach(function (other) {
+          if (other !== replacement) {
+            markLiked(other, liked && liked.dataset.likeCount);
+          }
+        });
       }).catch(function () {
         if (button) {
           button.disabled = false;
@@ -88,6 +143,12 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    document.querySelectorAll(".mg-like-form").forEach(configure);
+    var liked = likedQuotes();
+    document.querySelectorAll(".mg-like-form").forEach(function (form) {
+      if (liked.indexOf(form.dataset.likeQuoteId) !== -1) {
+        markLiked(form, null);
+      }
+      configure(form);
+    });
   });
 })();

@@ -59,7 +59,7 @@ CSP `script-src 'self'`（[ADR 016](../decisions/016-csp-htmx-rules.md)）に従
 - **ナビ**: `mg-header` / `mg-nav`（PC）/ `mg-tabbar`（モバイル下部固定）/ `mg-footer` / `mg-breadcrumb` / `mg-logo`
 - **検索**: `mg-search`（ヘッダー）/ `mg-search--hero`（検索ページ）/ `mg-search__input`
 - **名言カード**: `mg-quote-card`（注目）/ `--list`（一覧）/ `--compact`（新着）/ `--gold`（ランキング1位）。本文は `mg-quote`（明朝）
-- **いいね**: `mg-like`（素）/ `--pill`（カード）/ `--solid`（名言個別の主役）。`<form>` ラッパは `mg-like-form`（`display:contents`）
+- **いいね**: `mg-like`（素・ランキング）/ `--pill`（名言カード）/ `--solid`（名言個別の主役）。押す前は輪郭ハート、押した後（`is-liked`）は塗りハートで、`--pill` は藍（Dark=金）で塗る。押した瞬間にハートを一度だけ弾ませる（`prefers-reduced-motion` では止める）。`<form>` ラッパは `mg-like-form`（`display:contents`）
 - **著者**: `mg-author` / `mg-author-card` / `mg-author-profile` / `mg-avatar`（`--lg`/`--sm`）/ `mg-author-chip`
 - **著者の項目**: `mg-entries` / `mg-entry`（`__head` `__name` `__sub` `__bio` `__count`）。職業別・国別の著者一覧で、人名辞典の項目のように明朝の名前・原綴・生没年（年まで）・紹介文全文を本文幅の1カラムに並べ、罫線で区切る。全著者一覧`/authors`は`mg-author-card`の3列のまま
 - **絞り込み帯**: `mg-facets` / `mg-facet`（`__label` `__body` `__chips` `__more`）。`/authors`の職業・国チップを、左の見出し付きで上位12件だけ並べる。モバイルではチップを1行の横スクロールにする
@@ -94,7 +94,7 @@ Light/Dark の全コンポーネント一覧は `proposal-b/preview.html`、実�
 - **CSP / インラインコード**（[ADR 016](../decisions/016-csp-htmx-rules.md)）: CSSは外部ファイルのみ。テンプレートに `style` 属性を置かない（余白はユーティリティクラス）。実行可能なインラインJS・DOM event属性・`javascript:` は使わず外部静的JSへ。
 - **HTMX**（[ADR 016](../decisions/016-csp-htmx-rules.md)）: バージョン固定で `/static/` 配信。`allowEval=false` / `allowScriptTags=false` / `selfRequestsOnly=true`。イベントは外部JSの `addEventListener`。
   - **検索**: `<form>` へ `hx-get="/search/partial" hx-trigger="keyup changed delay:500ms, search"` を置き（フォームの値をそのまま送るため）、`#search-results` を差し替え。JS無効時は `/search` への通常GETで成立（[ADR 015](../decisions/015-search-rate-limits.md)）。チップは検索対象に合わせ**すべて / 名言 / 著者**の3つ（カテゴリはADR 002・§9.6の検索対象外）。`<mark>`はサーバー側で`markupsafe`のescape済みMarkupとして組み立てる。IME中の送信抑止（変換中のkeyupをcaptureで止め、htmxの`changed`記録を汚さない）と429の案内は外部静的JS `search.js`。
-  - **いいね**: `<form method="post" action="/api/likes/{id}">` を外部JSからPOSTし、成功HTMLでフォーム自身を差し替える。`client_uuid` はlocalStorageで管理する外部JSが付与し、サーバーはUUIDを厳密検証する。JS無効時はUUIDを生成できないため、匿名いいねは送信できない（[ADR 006](../decisions/006-like-count-cache-strategy.md)）。
+  - **いいね**: `<form method="post" action="/api/likes/{id}">` を外部JSからPOSTし、成功HTMLでフォーム自身を差し替える。`client_uuid` はlocalStorageで管理する外部JSが付与し、サーバーはUUIDを厳密検証する。いいね済みの名言IDも同じくlocalStorage（`meigen-fly-liked-quotes`、新しい500件）に保存し、ページ読込時に押下済み表示を復元する。押下済みのボタンは再送信しない。同じページに同じ名言が複数あれば、成功時にまとめて押下済みにする。JS無効時はUUIDを生成できないため、匿名いいねは送信できない（[ADR 006](../decisions/006-like-count-cache-strategy.md)）。
 - **フォント**: 日本語Webフォントは重いため、**system-ui系スタックを前提**（`--font-sans` / `--font-serif`）。見出し・引用は端末搭載の明朝（`Hiragino Mincho ProN` / `Yu Mincho` 等）にフォールバック。`Noto Serif JP` はスタック末尾に置くのみで、本体では読み込まない。
 - **アニメーション**: Cloudflareエッジキャッシュ前提の静的HTML。凝った動きより表示速度・可読性を優先。
 - **OG画像**: サイトの表示テーマとは切り離し、Light（和紙×墨×藍）を固定デザインとする。名言は `/quotes/{slug または q{id}}/og.png`、著者は `/authors/{slug}/og.png` で、PillowによりCloudflareキャッシュミス時に1200×630のPNGを生成する。`proposal-b/og/og.html` は本番でHTML画像化するテンプレートではなく、Pillow実装の視覚仕様・プレビューとして使う。名言は表示幅20/40/80の3段階、80超は`…`で省略し、本番コンテナのローカル`Noto Serif CJK JP`で描画する。詳細は [ADR 018](../decisions/018-og-image-generation.md)を正本とする。

@@ -441,7 +441,8 @@ def test_home_and_quote_pages_use_public_cache_headers(
     assert home.status_code == 200
     assert "新着名言から" in home.text
     assert 'href="/quotes/q2"' in home.text
-    assert home.text.count("?size=pill") == 1
+    assert "?size=pill" in home.text
+    assert "?size=pill" in listing.text
     assert detail.text.count("?size=solid") == 1
     assert home.headers["cache-control"] == "public, s-maxage=300, max-age=60"
     for response in (listing, detail):
@@ -456,27 +457,27 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
         '<script src="http://localhost:8000/static/theme.caadaed0.js">' in response.text
     )
     assert (
-        '<script src="http://localhost:8000/static/likes.313469f4.js" defer>'
+        '<script src="http://localhost:8000/static/likes.69f6de74.js" defer>'
         in response.text
     )
     assert "<script>" not in response.text
 
     for path in (
         "/static/theme.caadaed0.js",
-        "/static/likes.313469f4.js",
+        "/static/likes.69f6de74.js",
         "/static/tokens.74bc89e2.css",
-        "/static/components.8d9c6845.css",
+        "/static/components.ee83c6a6.css",
     ):
         asset = public_client.get(path)
         assert asset.status_code == 200
         assert asset.headers["cache-control"] == "public, max-age=31536000, immutable"
 
-    like_script = public_client.get("/static/likes.313469f4.js").text
+    like_script = public_client.get("/static/likes.69f6de74.js").text
     assert "window.localStorage" in like_script
     assert "window.crypto.randomUUID" in like_script
     assert 'method: "POST"' in like_script
 
-    mobile_css = public_client.get("/static/components.8d9c6845.css").text
+    mobile_css = public_client.get("/static/components.ee83c6a6.css").text
     assert ".mg-header__spacer { display: none; }" in mobile_css
     assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
     assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css

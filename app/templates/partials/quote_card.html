@@ -11,7 +11,7 @@
     {% else %}
       <span class="mg-author">作者不明</span>
     {% endif %}
-    {% include "partials/like_button.html" %}
+    {% with size = "pill" %}{% include "partials/like_button.html" %}{% endwith %}
   </div>
   {% if quote.categories %}
     <div class="mg-chips mg-mt-3">

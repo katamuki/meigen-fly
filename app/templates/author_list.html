@@ -5,12 +5,24 @@
 <nav class="mg-breadcrumb" aria-label="パンくず"><a href="/">ホーム</a><span class="sep">/</span><span class="current">著者</span></nav>
 <div class="mg-wide mg-page-body">
   <h1 class="mg-h1 mg-mb-6">著者から探す</h1>
-  <div class="mg-chips mg-mb-6" aria-label="職業で絞り込み">
-    {% for profession in professions %}<a class="mg-chip" href="/authors?profession_id={{ profession.id }}">{{ profession.name }} {{ profession.quote_count|comma }}</a>{% endfor %}
-  </div>
-  <div class="mg-chips mg-mb-6" aria-label="国で絞り込み">
-    {% for country in countries %}<a class="mg-chip" href="/authors/places/{{ country.slug }}" data-country-id="{{ country.id }}">{{ country.name }} {{ country.quote_count|comma }}</a>{% endfor %}
-  </div>
+  {% set ranked_professions = professions|selectattr("quote_count")|sort(attribute="quote_count", reverse=True)|list %}
+  {% set ranked_countries = countries|selectattr("quote_count")|sort(attribute="quote_count", reverse=True)|list %}
+  <dl class="mg-facets mg-mb-6">
+    <div class="mg-facet">
+      <dt class="mg-facet__label">職業</dt>
+      <dd class="mg-facet__body">
+        <div class="mg-chips mg-facet__chips">{% for profession in ranked_professions[:12] %}<a class="mg-chip" href="/professions/{{ profession.slug }}">{{ profession.name }}</a>{% endfor %}</div>
+        <a class="mg-facet__more" href="/professions">すべての職業（{{ professions|length|comma }}）</a>
+      </dd>
+    </div>
+    <div class="mg-facet">
+      <dt class="mg-facet__label">国・地域</dt>
+      <dd class="mg-facet__body">
+        <div class="mg-chips mg-facet__chips">{% for country in ranked_countries[:12] %}<a class="mg-chip" href="/authors/places/{{ country.slug }}" data-country-id="{{ country.id }}">{{ country.name }}</a>{% endfor %}</div>
+        {% if ranked_countries|length > 12 %}<details class="mg-facet__rest"><summary class="mg-facet__more">ほかの国・地域（{{ (ranked_countries|length - 12)|comma }}）</summary><div class="mg-chips mg-mt-3">{% for country in ranked_countries[12:] %}<a class="mg-chip" href="/authors/places/{{ country.slug }}" data-country-id="{{ country.id }}">{{ country.name }}</a>{% endfor %}</div></details>{% endif %}
+      </dd>
+    </div>
+  </dl>
   <p class="mg-hero__meta">全 {{ total|comma }}人</p>
   <div class="mg-grid-3 mg-mt-4">
     {% for author in items %}

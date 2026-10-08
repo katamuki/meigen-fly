@@ -100,6 +100,7 @@ def _paths(old: dict[str, Any] | None, new: dict[str, Any] | None) -> list[str]:
     for item in (old, new):
         if item:
             paths.add(f"/professions/{item['slug']}")
+            paths.add(f"/professions/{item['slug']}/quotes")
     return sorted(paths)
 
 

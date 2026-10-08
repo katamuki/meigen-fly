@@ -534,25 +534,12 @@ def _render_authors(
     connection: Connection,
     *,
     page: int,
-    profession_id: int | None,
     country_id: int | None,
 ) -> HTMLResponse:
-    result = list_authors(
-        connection,
-        page=page,
-        profession_id=profession_id,
-        country_id=country_id,
-    )
+    result = list_authors(connection, page=page, country_id=country_id)
     if page > 1 and (result["total_pages"] == 0 or page > result["total_pages"]):
         raise HTTPException(status_code=404)
-    query = {
-        key: value
-        for key, value in {
-            "profession_id": profession_id,
-            "country_id": country_id,
-        }.items()
-        if value is not None
-    }
+    query = {"country_id": country_id} if country_id is not None else {}
     pagination = _query_pagination("/authors", result, query)
     return templates.TemplateResponse(
         request=request,
@@ -571,17 +558,10 @@ def _render_authors(
 def authors_index(
     request: Request,
     connection: ConnectionDependency,
-    profession_id: PositiveId = None,
     country_id: PositiveId = None,
     page: PageNumber = 1,
 ) -> HTMLResponse:
-    return _render_authors(
-        request,
-        connection,
-        page=page,
-        profession_id=profession_id,
-        country_id=country_id,
-    )
+    return _render_authors(request, connection, page=page, country_id=country_id)
 
 
 @router.get("/authors/places/{slug}", response_class=HTMLResponse)
@@ -855,8 +835,41 @@ def professions_index(
     )
 
 
-def _profession_detail_response(
-    request: Request, connection: Connection, *, slug: str, page: int = 1
+@router.get("/professions/{slug}", response_class=HTMLResponse)
+def profession_detail(
+    request: Request,
+    slug: str,
+    connection: ConnectionDependency,
+    page: PageNumber = 1,
+) -> HTMLResponse:
+    profession = get_profession(connection, slug)
+    if profession is None:
+        raise HTTPException(status_code=404)
+    authors_result = list_authors(connection, profession_id=profession["id"], page=page)
+    if page > 1 and (
+        authors_result["total_pages"] == 0 or page > authors_result["total_pages"]
+    ):
+        raise HTTPException(status_code=404)
+    pagination = _query_pagination(f"/professions/{slug}", authors_result, {})
+    return templates.TemplateResponse(
+        request=request,
+        name="profession_detail.html",
+        context={
+            "profession": profession,
+            "authors": authors_result["items"],
+            "total": authors_result["total"],
+            "canonical_path": pagination["canonical"],
+            "pagination": pagination,
+        },
+    )
+
+
+@router.get("/professions/{slug}/quotes", response_class=HTMLResponse)
+def profession_quotes(
+    request: Request,
+    slug: str,
+    connection: ConnectionDependency,
+    page: PageNumber = 1,
 ) -> HTMLResponse:
     profession = get_profession(connection, slug)
     if profession is None:
@@ -869,30 +882,8 @@ def _profession_detail_response(
         base_path=f"/professions/{slug}/quotes",
         page=page,
         query_pagination=True,
-        canonical_path=(
-            f"/professions/{slug}"
-            if page == 1
-            else f"/professions/{slug}/quotes?page={page}"
-        ),
         profession_id=profession["id"],
     )
-
-
-@router.get("/professions/{slug}", response_class=HTMLResponse)
-def profession_detail(
-    request: Request, slug: str, connection: ConnectionDependency
-) -> HTMLResponse:
-    return _profession_detail_response(request, connection, slug=slug)
-
-
-@router.get("/professions/{slug}/quotes", response_class=HTMLResponse)
-def profession_quotes(
-    request: Request,
-    slug: str,
-    connection: ConnectionDependency,
-    page: PageNumber = 1,
-) -> HTMLResponse:
-    return _profession_detail_response(request, connection, slug=slug, page=page)
 
 
 @router.get("/about", response_class=HTMLResponse)

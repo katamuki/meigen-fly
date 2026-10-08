@@ -1,0 +1,9 @@
+<ul class="mg-entries">
+  {% for author in authors %}
+    <li><a class="mg-entry" href="/authors/{{ author.slug }}">
+      <span class="mg-entry__head"><strong class="mg-entry__name">{{ author.name }}</strong>{% if author.name_foreign %}<span class="mg-entry__sub">{{ author.name_foreign }}</span>{% endif %}{% if author.lifespan_years %}<span class="mg-entry__sub">{{ author.lifespan_years }}</span>{% endif %}</span>
+      {% if author.description %}<span class="mg-entry__bio">{{ author.description }}</span>{% endif %}
+      <span class="mg-entry__count">名言 {{ author.quote_count|comma }}件</span>
+    </a></li>
+  {% endfor %}
+</ul>

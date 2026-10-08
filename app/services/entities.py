@@ -90,6 +90,13 @@ def list_authors(
             authors.c.slug,
             authors.c.description,
             authors.c.name_reading,
+            authors.c.name_foreign,
+            authors.c.birth_date,
+            authors.c.birth_precision,
+            authors.c.birth_era,
+            authors.c.death_date,
+            authors.c.death_precision,
+            authors.c.death_era,
             author_rankings.c.rank,
             _public_quote_count(quotes.c.author_id == authors.c.id).label(
                 "quote_count"
@@ -109,12 +116,27 @@ def list_authors(
         .limit(per_page)
         .offset((page - 1) * per_page)
     )
-    return _page(
+    result = _page(
         connection.execute(statement).mappings(),
         page=page,
         total=total,
         per_page=per_page,
     )
+    for item in result["items"]:
+        item["lifespan_years"] = format_lifespan(
+            item["birth_date"],
+            _year_precision(item["birth_precision"]),
+            item["birth_era"],
+            item["death_date"],
+            _year_precision(item["death_precision"]),
+            item["death_era"],
+        )
+    return result
+
+
+def _year_precision(precision: str) -> str:
+    """Shorten a known date to its year for compact author entries."""
+    return "unknown" if precision == "unknown" else "year"
 
 
 def _author_links(connection: Connection, author_id: int) -> dict:

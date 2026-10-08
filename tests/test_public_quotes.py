@@ -465,7 +465,7 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
         "/static/theme.caadaed0.js",
         "/static/likes.313469f4.js",
         "/static/tokens.74bc89e2.css",
-        "/static/components.85b1abc0.css",
+        "/static/components.8d9c6845.css",
     ):
         asset = public_client.get(path)
         assert asset.status_code == 200
@@ -476,7 +476,7 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
     assert "window.crypto.randomUUID" in like_script
     assert 'method: "POST"' in like_script
 
-    mobile_css = public_client.get("/static/components.85b1abc0.css").text
+    mobile_css = public_client.get("/static/components.8d9c6845.css").text
     assert ".mg-header__spacer { display: none; }" in mobile_css
     assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
     assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css
@@ -928,8 +928,13 @@ def test_character_profession_and_country_pages_keep_zero_counts_and_404(
     assert 'data-entity-id="61" data-quote-count="0"' in characters_page.text
     assert 'data-entity-id="20" data-quote-count="1"' in professions_page.text
     assert 'data-entity-id="21" data-quote-count="0"' in professions_page.text
-    assert 'data-country-id="30">日本 1' in authors_page.text
-    assert 'data-country-id="31">フランス 0' in authors_page.text
+    assert (
+        'href="/authors/places/japan" data-country-id="30">日本</a>'
+        in authors_page.text
+    )
+    assert 'data-country-id="31"' not in authors_page.text
+    assert '<a class="mg-chip" href="/professions/philosopher">' in authors_page.text
+    assert "/authors?profession_id=" not in authors_page.text
 
     expected_counts = {
         "/characters/hero": 'data-entity-type="character" data-entity-id="60" data-quote-count="1"',
@@ -948,3 +953,29 @@ def test_character_profession_and_country_pages_keep_zero_counts_and_404(
         "/authors/places/not-found",
     ):
         assert public_client.get(path).status_code == 404
+
+
+def test_profession_detail_lists_authors_and_links_to_quotes(
+    public_client: TestClient,
+) -> None:
+    detail = public_client.get("/professions/philosopher")
+    quotes_page = public_client.get("/professions/philosopher/quotes")
+
+    assert detail.status_code == 200
+    assert "哲学者の著者" in detail.text
+    assert 'href="/authors/author-one"' in detail.text
+    assert 'href="/authors/author-two"' not in detail.text
+    assert '<span class="mg-entry__sub">1867年 - 1916年</span>' in detail.text
+    assert 'href="/professions/philosopher/quotes"' in detail.text
+    assert (
+        '<link rel="canonical" href="http://localhost:8000/professions/philosopher">'
+        in detail.text
+    )
+    assert public_client.get("/professions/philosopher?page=2").status_code == 404
+
+    assert quotes_page.status_code == 200
+    assert (
+        '<link rel="canonical" '
+        'href="http://localhost:8000/professions/philosopher/quotes">'
+        in quotes_page.text
+    )

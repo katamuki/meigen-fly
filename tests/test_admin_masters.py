@@ -487,7 +487,11 @@ def test_profession_crud_unique_messages_commit_and_purge(
     with engine.connect() as connection:
         row = connection.execute(select(professions)).mappings().one()
     assert client.get(f"/admin/professions/{row['id']}/edit").status_code == 200
-    assert observed[-1] == {"/professions", "/professions/writer"}
+    assert observed[-1] == {
+        "/professions",
+        "/professions/writer",
+        "/professions/writer/quotes",
+    }
     response = client.post(
         "/admin/professions",
         data={
@@ -554,7 +558,9 @@ def test_profession_crud_unique_messages_commit_and_purge(
     assert observed[-1] == {
         "/professions",
         "/professions/writer",
+        "/professions/writer/quotes",
         "/professions/author-job",
+        "/professions/author-job/quotes",
     }
     delete_page = client.get(f"/admin/professions/{row['id']}/delete")
     assert "関連が外れる著者</dt><dd>1件" in delete_page.text
@@ -564,7 +570,11 @@ def test_profession_crud_unique_messages_commit_and_purge(
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert observed[-1] == {"/professions", "/professions/author-job"}
+    assert observed[-1] == {
+        "/professions",
+        "/professions/author-job",
+        "/professions/author-job/quotes",
+    }
     with engine.connect() as connection:
         assert (
             connection.execute(

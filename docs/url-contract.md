@@ -46,7 +46,7 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 ## 3. ページングの正規化
 
 - パス型ページング: `/quotes/page/{n}`、`/quotes/latest/page/{n}`、`/authors/{slug}/page/{n}`、`/categories/{slug}/page/{n}`、`/sources/{slug}/page/{n}`、`/characters/{slug}/page/{n}`
-- クエリ型ページング: `/authors?page={n}`、`/sources?page={n}`、`/characters?page={n}`、`/authors/places/{slug}?page={n}`、`/professions/{slug}/quotes?page={n}`
+- クエリ型ページング: `/authors?page={n}`、`/sources?page={n}`、`/characters?page={n}`、`/authors/places/{slug}?page={n}`、`/professions/{slug}?page={n}`、`/professions/{slug}/quotes?page={n}`
 - **`/page/1` で終わるパスは常に301でその接頭辞へ正規化する**（queryは維持）。旧サイトの5本の`page/1`ルールを1つの規則にまとめたもので、旧サイトに無かった`/sources/{slug}/page/1`も同じ扱いになる。
   - この規則と末尾スラッシュの除去（§1）は、パスが存在するかを確かめずに当てる。そのため存在しないパス（例: `/nonexistent/page/1`、`/nonexistent/`）も301を返し（1日キャッシュ、§6）、行き先で404になる。
 - `page` が2未満・非数値・範囲外のパス型ページは404（`_parse_paginated_page`）。
@@ -57,7 +57,6 @@ canonicalの絶対URLは環境変数 `PUBLIC_ORIGIN` から組み立てる（`ap
 | URL | canonical | 理由 |
 |---|---|---|
 | `/ranking/quotes` | `/ranking` | 同一内容の入口が2つあるため |
-| `/professions/{slug}/quotes`（1ページ目） | `/professions/{slug}` | 内部リンクは `/professions/{slug}` を使う |
 
 ## 4. 静的リダイレクト（旧`next.config.js` 23本）
 

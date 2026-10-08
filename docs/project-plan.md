@@ -79,7 +79,7 @@
 | `/authors/places/[countrySlug]` | 国別著者 | `/authors/places` の基底一覧は現行に存在しない |
 | `/categories`, `/categories/[slug]`, `/categories/[slug]/page/[n]` | カテゴリ（2階層） | `page/1` は基底URLへ301 |
 | `/characters`, `/characters/[slug]`, `/characters/[slug]/page/[n]` | 登場人物 | `page/1` は基底URLへ301 |
-| `/professions`, `/professions/[slug]`, `/professions/[slug]/quotes` | 職業 | |
+| `/professions`, `/professions/[slug]`, `/professions/[slug]/quotes` | 職業 | `[slug]`は職業別の著者一覧、`/quotes`は名言一覧（旧サイトと同じ） |
 | `/sources`, `/sources/[slug]`, `/sources/[slug]/page/[n]` | 出典（作品） | 種別フィルタ |
 | `/ranking` | ランキング | 名言/著者/カテゴリ |
 | `/random` | ランダム名言20件＋シャッフル | 現行機能を維持し、`private, no-store`＋Cloudflare Bypass |
@@ -294,6 +294,10 @@ meigen-fly/
 - [x] URL互換リダイレクト（静的301 23本 + `/quotations/view/[id].html` 動的301 + [URL契約表](url-contract.md)に基づく正規化。3-E、2026-09-10）
 - [x] OG画像（D5/ADR 018。3-E、2026-09-10）
 - [x] 静的ページ（/about, /privacy, /terms。旧Markdownを変換したJinjaテンプレート、プライバシーポリシーは新サイトの実態に合わせて改定。3-Eの追加作業、2026-09-13）
+- [x] `/authors`の職業・国チップを名言数上位12件の見出し付き絞り込み帯に整理。職業チップは`/professions/{slug}`へリンクし、`/authors?profession_id=`は廃止。`/professions/{slug}`を旧サイトと同じ職業別の著者一覧に直し、名言一覧は自己canonicalの`/professions/{slug}/quotes`に分けた。名言0件の国は出さず、残りの国は折りたたむ（2026-10-08）
+- [x] `/professions/{slug}`と`/authors/places/{slug}`の著者一覧を、名前・原綴・生没年（年まで）・紹介文を見せる人名辞典型の1カラムに変更（2026-10-08）
+- [ ] `/professions`一覧（333件をカードで全件表示）が長い。名言の多い職業だけカードにし、残りは文字の一覧にする等で見やすくする
+- [ ] 著者の紹介文に混入した誤りを管理画面で直す（例: ジャン・ド・ラ・ブリュイエールの「остроумно (witfully)」）。他にも同様の混入がないか確認する
 - [ ] サイト本体完成後、必要な場合だけGA4を別フェーズで導入（通常のpage view、Privacy Policy、同意要件を確認）
 - [ ] サイト本体完成後、必要な場合だけAdSenseを別フェーズで導入（対象route、Privacy Policy、同意要件を確認）
 

@@ -68,6 +68,23 @@ mark { background: var(--mark); color: var(--ink); padding: 0 2px; border-radius
 .mg-chip--accent { color: var(--accent); background: var(--accent-wash); border-color: var(--accent-soft); }
 .mg-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
+/* --- Facets（著者一覧の職業・国の絞り込み帯。左に索引見出し） --- */
+.mg-facets { margin: 0; padding-bottom: var(--sp-6); border-bottom: 1px solid var(--line); display: grid; gap: var(--sp-6); }
+.mg-facet { display: grid; grid-template-columns: 6em 1fr; gap: var(--sp-4); align-items: start; }
+.mg-facet__label { font-family: var(--font-serif); font-size: var(--fs-small); font-weight: 600; color: var(--ink); padding-top: var(--sp-1); }
+.mg-facet__body { margin: 0; min-width: 0; }
+.mg-facet__more { display: inline-block; margin-top: var(--sp-3); font-size: var(--fs-small); color: var(--accent); cursor: pointer; }
+
+/* --- Author entries（職業・国の著者一覧。人名辞典の項目のように名前と紹介文を読ませる） --- */
+.mg-entries { list-style: none; margin: var(--sp-6) 0 0; padding: 0; max-width: var(--container-text); border-top: 1px solid var(--line); }
+.mg-entry { display: block; padding: var(--sp-6) 0; border-bottom: 1px solid var(--line); }
+.mg-entry__head { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--sp-3); row-gap: var(--sp-1); }
+.mg-entry__name { font-family: var(--font-serif); font-size: var(--fs-h2); font-weight: 600; color: var(--ink); letter-spacing: .04em; }
+.mg-entry:hover .mg-entry__name { color: var(--accent); }
+.mg-entry__sub { font-size: var(--fs-small); color: var(--subtle); }
+.mg-entry__bio { display: block; margin-top: var(--sp-2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--muted); }
+.mg-entry__count { display: block; margin-top: var(--sp-2); text-align: right; font-size: var(--fs-caption); color: var(--subtle); }
+
 /* --- Like button（3サイズ） --- */
 .mg-like {
   display: inline-flex; align-items: center; gap: var(--sp-2);
@@ -267,6 +284,9 @@ a.mg-hero__quote:hover { text-decoration: none; color: var(--ink); }
   .mg-author-profile__stat { border-left: 0; padding-left: 0; }
   .mg-author-profile__bio { text-align: left; }
   .mg-footer__inner { flex-direction: column; gap: var(--sp-4); }
+  .mg-facet { grid-template-columns: 1fr; gap: var(--sp-2); }
+  .mg-facet__chips { flex-wrap: nowrap; overflow-x: auto; padding-bottom: var(--sp-1); }  /* 1行で横に流す */
+  .mg-facet__chips .mg-chip { flex: none; }
   :root { --fs-quote-lg: 24px; --fs-display: 26px; }
 }
 

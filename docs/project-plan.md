@@ -4,7 +4,7 @@
 > 詳細な技術判断は `docs/decisions/` 配下の決定記録に切り出す。
 >
 > - 作成日: 2026-07-01
-> - 更新日: 2026-10-07（フェーズ6準備の実機確認を反映）
+> - 更新日: 2026-10-08（フェーズ6準備と定期ジョブ確認方針を反映）
 > - 対象リポジトリ: `/Users/sonoda/prj/meigen-fly`（新規）
 > - 移管元: `/Users/sonoda/prj/meigensyu`（Next.js 14 + Supabase、稼働中）
 
@@ -139,7 +139,7 @@ SQLiteで扱うテーブルは、原本・関連13表 + ranking snapshot 3表の
 
 `authors` / `sources` / `source_types` / `source_type_assignments` / `characters` / `quotes` / `categories` / `professions` / `author_professions` / `countries` / `author_country` / `quote_categories` / `quote_likes` / `quote_ranking_scores` / `author_rankings` / `category_rankings`
 
-現行の`legacy_votes`はquote別の値を`quotes.legacy_vote_count`へ統合し、独立表を作らない。`ranking_parameters`の4係数は型付きCLI設定へ同値移行し、`ip_daily_limit`はアプリ側rate limit設定へ分離する。`ranking_refresh_logs`は移行せず、新DBに履歴表を作らない。定期処理の成否はstderr・外部監視・heartbeatで扱う。
+現行の`legacy_votes`はquote別の値を`quotes.legacy_vote_count`へ統合し、独立表を作らない。`ranking_parameters`の4係数は型付きCLI設定へ同値移行し、`ip_daily_limit`はアプリ側rate limit設定へ分離する。`ranking_refresh_logs`は移行せず、新DBに履歴表を作らない。定期処理の成否はFlyログとR2オブジェクト・ランキングsnapshotの更新時刻を手動確認する（2026-10-08の運用判断）。
 
 既存の`admin_users`は初期認証に利用せず、移行必須対象から除外する。将来、複数管理者の権限差が必要になった場合に、ADR 012に従って新しい認可モデルとして再設計する。
 
@@ -155,7 +155,7 @@ SQLiteで扱うテーブルは、原本・関連13表 + ranking snapshot 3表の
 - `view_admin_kpi_counts`
 - `view_admin_ranking_refresh_logs`
 
-現行`pg_cron`ジョブから移す定期処理はranking CLIだけとし、supercronicから実行する。カテゴリ件数はリアルタイムSQLで算出するためrefresh jobを作らない。初期はUvicorn 1 workerとし、FastAPI startup/lifespanではスケジューラを起動しない。ranking CLIには多重起動ロック・timeout・失敗通知を設ける（D6/ADR 005）。
+現行`pg_cron`ジョブから移す定期処理はranking CLIだけとし、supercronicから実行する。カテゴリ件数はリアルタイムSQLで算出するためrefresh jobを作らない。初期はUvicorn 1 workerとし、FastAPI startup/lifespanではスケジューラを起動しない。ranking CLIには多重起動ロック・timeout・成功/失敗ログを設ける（D6/ADR 005）。
 
 > データ規模（2026-07-17本番確認）: 名言1,831件、著者774件、likes 7,591件。中間表・snapshot・履歴等を含む現行20表の合計は20,833行（`admin_users`を除くアプリデータは20,831行）で、引き続き小規模である。
 
@@ -333,13 +333,13 @@ meigen-fly/
 - [x] CI workflow（main push/PRでlint・format・pytest）と手動deploy workflow（2026-10-06、5-C。YAML検証済み、GitHub上の実行は未検証）
 - [x] Fly app `meigensyu`（既存、`katamuki-org`）とVolume `data`（1GB、`nrt`、1つ）の確認・作成（2026-10-06、runbook §1）
 - [x] `TUNNEL_TOKEN`・`SECRET_KEY`登録、初回デプロイ、`nrt`のMachine 1台と内部healthz、手元DBの初回配置、localhost・一時的な`trycloudflare.com`での画面確認（2026-10-07、runbook §5.1・§6）
-- [ ] 残りのFly secrets登録、定期ジョブ再開と内部確認（runbook §5.1）
-- [ ] R2バケット限定資格情報・daily/の30日Lifecycle・実PUT、ジョブHeartbeatとPush主/メール予備通知の受信確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §3・§4.1
-- [ ] R2から取得してのリリース前復元確認。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §7・§6
+- [x] 残りのFly secrets登録、定期ジョブ再開と内部確認（2026-10-08、runbook §5.1。8件Deployed、3プロセスRUNNING、内部healthz 200）
+- [ ] R2バケット限定資格情報・実PUT、ジョブの成功ログとR2最新オブジェクト・ランキング更新時刻の確認。バケットと`daily/`の30日Lifecycleを設定し、2026-10-08に手動PUTの成功ログ、R2からの取得、ランキング更新時刻を確認。次の定期実行は未確認。Heartbeat通知は使わない（runbook §3・§4.1）
+- [x] R2から取得してのリリース前復元確認（2026-10-08、runbook §7・§6。revision `0002`、authors 774件・quotes 1,831件、内部healthz・名言一覧200）
 - [ ] Cloudflare DNS/SSL/Tunnel route・Cache Rules（OG/sitemap/robotsを含む）・WAF・Access。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §2（§2.1のみ切替前、他は切替時）
-- [x] Cloudflare Tunnel `meigensyu`の作成、公開routeなし、team domainの控え、Google IdPの接続テスト成功（2026-10-07、runbook §2.1。connector接続は初回デプロイ後）
+- [x] Cloudflare Tunnel `meigensyu`の作成、公開routeなし、team domainの控え、Google IdPの接続テスト成功。2026-10-08にTunnel「正常」・レプリカ1・ルートなしとGoogleの2段階認証有効を確認（runbook §2.1）
 - [ ] `meigensyu.com`のCloudflare zone追加、Zone ID・Cache Purge token取得。現時点の権威DNSは`name-services.com`で、Cloudflareにzone未登録。旧サイトを保つためネームサーバー変更は切替時に行う（runbook §2.1・§2.3）
-- [x] Tunnel connectorの接続ログ、Fly public IP/serviceなしを実確認（2026-10-07、runbook §5.1。Zero Trust画面のHEALTHYは未確認）
+- [x] Tunnel connectorの接続ログ、Fly public IP/serviceなしを実確認（2026-10-07〜08、runbook §5.1。Cloudflare画面でもTunnel「正常」）
 - [ ] GET /healthzの5分外形監視・no-store/Bypass・本番smoke test、GitHub deploy token登録とworkflow実行。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §4.2・§5.2
 
 ### フェーズ6: 本番リリース（決定記録001 §12・ADR 013）
@@ -365,9 +365,9 @@ meigen-fly/
 |---|---|
 | 日本語検索精度・性能の劣化 | 初期は単純な`LIKE`で開始し、本番相当データの実測で問題が出た場合だけFTS5等を再検討（D1） |
 | SQLite書き込み競合 | 書き込みは原則Admin・WAL・`busy_timeout`。**匿名いいねのみ公開書き込み**だが低頻度・単純INSERTで競合影響は限定的（§3.2-2/D9） |
-| 定期ジョブの二重実行・部分更新 | FastAPI内でスケジュールせずsupercronicへ分離。`flock`、timeout、失敗通知、単一transactionで前回正常結果を保持（D6/ADR 005） |
+| 定期ジョブの二重実行・部分更新 | FastAPI内でスケジュールせずsupercronicへ分離。`flock`、timeout、成功/失敗ログ、単一transactionで前回正常結果を保持（D6/ADR 005） |
 | いいね取得が全PVでオリジン到達 | 件数を詳細・一覧HTMLへ含め10分キャッシュ。毎PV GET APIを作らず、POSTした本人だけ即時更新（D9/ADR 006） |
-| 単一マシン/Volume障害 | R2の日次バックアップから手動復旧。正常時も最大約24時間の更新欠損を許容し、失敗を通知する（D2/ADR 003） |
+| 単一マシン/Volume障害 | R2の日次バックアップから手動復旧。正常時も最大約24時間の更新欠損を許容し、最新バックアップを手動確認する（D2/ADR 003） |
 | 稼働中SQLiteの不整合バックアップ | 単純なファイルコピーを禁止し、Online Backup APIで一貫したバックアップを作成して`integrity_check`する（D2/ADR 003） |
 | URL変更によるSEO低下 | URL互換維持＋301リダイレクト（D10） |
 | OG画像/ランキングのメモリ負荷 | OG画像はPillowでキャッシュミス時のみ生成しCloudflareで30日キャッシュ。ランキングはD6に従いジョブを分離（ADR 018/005） |
@@ -387,6 +387,6 @@ meigen-fly/
 
 ## 12. 次のアクション
 
-1. Fly初回デプロイと非公開・一時公開プレビューは完了。既存`www.meigensyu.com`を保ったまま、Cloudflare MFA・zone追加時期、R2・Heartbeat・Fly secretsの残りを確認し、定期ジョブと通知を検証する
-2. runbook §7で本物のR2復旧を検収し、旧環境書き込み凍結後にmigration-runbook §5を再実行して§6の最終移行を行う
+1. Fly初回デプロイと非公開・一時公開プレビュー、Cloudflare Tunnel「正常」とGoogle MFA、R2バケットとLifecycle設定は完了。既存`www.meigensyu.com`を保ったまま、R2資格情報・Fly secretsの残りを設定し、定期ジョブの結果を手動確認する。zone追加は切替日が見えてから行う
+2. runbook §7のR2復旧演習は完了。次の定期ジョブ実行を確認し、切替直前に旧環境の書き込みを凍結してmigration-runbook §5を再実行し、§6の最終移行を行う
 3. runbook §2.2〜2.6・§4.2でAccess・DNS/Tunnel・キャッシュ・WAF・外形監視を切り替え、§5.2で本番検収する。手動deploy workflowは切替後から使用する

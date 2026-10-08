@@ -1,12 +1,12 @@
 # 運用runbook
 
-更新日: 2026-10-07（フェーズ6準備の実機確認を反映）。単一Machine・単一Volume、短い停止を許容する。
+更新日: 2026-10-08（フェーズ6準備の実機確認を反映）。単一Machine・単一Volume、短い停止を許容する。
 
-**実機検証済みは§1、§2.1・§5.1の一部、§6の初回DB配置**。Fly Machineへの初回デプロイ、Tunnel connectorの接続、内部healthz、手元DBの配置、localhostと一時的な`trycloudflare.com`での画面表示を確認した。R2、UptimeRobot、Cloudflare zone・API token、GitHubの操作は未検証。§7のR2復旧演習も未実施。公式資料で仕様を確認した箇所にはリンクを付けた。
+**実機検証済みは§1、§2.1の一部、§3の手動PUT・取得、§4.1の手動実行、§5.1、§6の初回DB配置、§7のR2復旧演習**。Fly Machineへの初回デプロイ、Tunnel connectorの接続、内部healthz、手元DBの配置、localhostと一時的な`trycloudflare.com`での画面表示を確認した。R2バケットとLifecycleを設定し、バックアップの保存・取得・復元を確認した。次の定期実行、Cloudflare zone・API token、GitHubの操作は未検証。定期ジョブのUptimeRobot Heartbeatは使用しない。公式資料で仕様を確認した箇所にはリンクを付けた。
 
 実行順は **§1 → §2.1 → §3 → §4.1 → §5.1（secrets・初回デプロイ）**。切替時は **旧書き込み凍結・§6 → §2.2〜2.6 → §4.2 → §5.2**。§7・§8は障害時に使う。コマンドはリポジトリ直下から実行する。`<...>`は管理者が得た値に置換し、秘密の実値を資料・Git・ログへ貼らない。
 
-2026-10-07に既存`www`を維持したままFlyの非公開プレビューと一時的な外部プレビューを実施した。残作業は[次回セッション指示](next-session.md#次回の開始地点)に記載した。
+2026-10-07に既存`www`を維持したままFlyの非公開プレビューと一時的な外部プレビューを実施した。残作業は[次回セッション指示](next-session.md#次の開始地点)に記載した。
 
 DNS切替までは `www.meigensyu.com` と `meigensyu.com` が旧Next.jsサイトを指す。zone全体の変更は旧サイトにも効くので、Cache Rules・Redirect Ruleも**切替時に作成する**。切替前にpublic hostnameをTunnelへ付けない。WAF・Access・外形監視も切替時に行う。
 
@@ -29,9 +29,11 @@ fly volumes create data --app meigensyu --region nrt --size 1
 
 ### 2.1 切替前: Tunnelと資格情報だけを準備
 
-**一部検証済み（2026-10-07）**。`meigensyu` Tunnelを作成し、connector tokenを管理者が保管した。公開アプリケーションrouteは空。初回デプロイ後、`fly logs`で`Registered tunnel connection`を4本確認した（Zero Trust画面のHEALTHY表示は未確認）。team domainを管理者が控え、Google IdPを追加して`Your connection works!`を確認した。GoogleアカウントのMFAは未確認。Zone IDとCache Purge tokenは未取得。
+**一部検証済み（2026-10-08）**。`meigensyu` Tunnelを作成し、connector tokenを管理者が保管した。公開アプリケーションrouteは空。初回デプロイ後、`fly logs`で`Registered tunnel connection`を4本確認した。2026-10-08にCloudflareのTunnel一覧で状態「正常」、レプリカ1、ルートなしを確認。team domainを管理者が控え、Google IdPを追加して`Your connection works!`を確認した。Googleアカウントのセキュリティ画面では2段階認証プロセスが有効と確認した。Access経由の実ログインは切替時に確認する。Zone IDとCache Purge tokenは未取得。
 
 **実機差分**: `meigensyu.com`はまだCloudflareのDomainsに追加されていない。2026-10-07に公開DNSを確認した時点の権威ネームサーバーは`dns1`〜`dns5.name-services.com`、`www`はVercel向けCNAMEだった。Zone IDはCloudflare zoneを追加するまで取得できない。切替前にzoneを追加する場合も、旧サイト稼働中はドメイン登録先のネームサーバーを変更しない。既存DNSレコードをすべて確認・反映してから切替日に委任を変更する。FreeプランのzoneはPending Nameserver Updateが28日を超えると削除されるため、作成日と切替日を管理する。[公式Pending zone](https://developers.cloudflare.com/dns/zone-setups/troubleshooting/pending-nameservers/)・[公式Zone ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/)
+
+**2026-10-08再確認**: 公開DNSの権威NSは引き続き`dns1`〜`dns5.name-services.com`、apexのAレコードは`216.150.1.1`、`www`は`28f6898fa39e0d09.vercel-dns-017.com`へのCNAME（問い合わせ時のTTLはともに3600秒）。Cloudflare Free zoneを切替前に追加して委任を保留する場合、Pendingの28日期限を切替予定日と照合する。切替日が未定ならzone追加・Zone ID・Cache Purge token取得を切替に近い時期へ回せる。R2バックアップとHeartbeatはそれらの設定なしで検証可能で、ランキング再計算のキャッシュ削除は設定がなければスキップされる。
 
 Zero TrustのNetworks / Connectors / Cloudflare Tunnelsからremotely-managed Tunnel（名前 `meigensyu`、connector `cloudflared`）を作る。表示されたconnector tokenを`TUNNEL_TOKEN`用に保管する。インストールコマンドは実行せず、既存イメージのcloudflaredを使う。**Published application / public hostnameは空のまま**とする。[公式Tunnel作成手順](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel/)
 
@@ -123,6 +125,10 @@ Characteristics: IP、Requests: **10**、Period: **10 seconds**、Action: **Bloc
 
 ## 3. R2（切替前）
 
+**手動実行を検証済み（2026-10-08）**。CloudflareのR2初期画面で、バケット作成前にR2サブスクリプションの追加が必要と判明した。管理者が追加を完了し、契約完了画面で有効化を確認した。非公開バケット`meigensyu-backups`をアジア太平洋・Standardで作成。カスタムドメインは未割当、パブリック開発URLは無効。Lifecycle `daily-30-days`はprefix `daily/`、30日後にオブジェクト削除、Enabledを画面で確認した。既定の7日後multipart中止ルールもEnabledのまま。管理者がバケット限定Object Read & WriteのAccount APIトークンを作成し、S3 Access Key IDとSecret Access Keyを手元に保管した。手動PUTの成功ログと、dashboardから取得したオブジェクトのサイズ・SQLite整合性を確認した。定期実行は未確認。
+
+**2026-10-08手動PUT**: `backup_sqlite.py`が終了コード0で、`backup succeeded key=daily/app-20261008T034608Z.db bytes=3059712 duration_seconds=1.038`を出した。管理者がR2 dashboardから同オブジェクトを取得し、3,059,712バイトのSQLiteとして整合性を確認した。§7で復元済み。
+
 R2 Object Storageで非公開バケット `meigensyu-backups` を作る。Settings / Object Lifecycle Rulesで名前 `daily-30-days`、prefix **`daily/`**、Delete objects after **30 days**、Enabledを設定する。既定のmultipart期限ルールはそのままでよい。[公式Lifecycle](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)
 
 R2のManage API TokensからObject Read & Writeを選び、Specific bucketsを `meigensyu-backups` だけにする。Access Key ID・Secret Access Keyを保管する。管理API token自体ではなく、このS3資格情報をスクリプトへ渡す。[公式R2資格情報](https://developers.cloudflare.com/r2/api/tokens/)
@@ -141,22 +147,33 @@ fly ssh console --app meigensyu
 flock -n /tmp/backup_sqlite.lock timeout 600 /app/.venv/bin/python /app/scripts/backup_sqlite.py
 ```
 
-成功ログのキー・バイト数・所要時間と、R2 dashboardに `daily/app-<UTC日時>.db` があることを確認する。これが実R2 PUTの最初の確認。Heartbeat受信も§4.1で確認する。通知が届くまで監視を放置しない。
+成功ログのキー・バイト数・所要時間と、R2 dashboardに `daily/app-<UTC日時>.db` があることを確認する。これが実R2 PUTの最初の確認。以後は§4.1の手順で最新オブジェクトを確認する。
 
 ## 4. UptimeRobot
 
-### 4.1 切替前: Heartbeat 2つ
+### 4.1 切替前: 定期ジョブの結果確認
 
-Heartbeat monitorを2つ作り、間隔と猶予を以下に固定する。利用プランがHeartbeatとこの間隔を提供することを契約画面で確認する。
+**方針変更（2026-10-08、手動実行を検証済み）**。管理者は定期ジョブの実行結果を手動確認できればよいと判断し、UptimeRobotの有料Heartbeat契約を行わない。`UPTIMEROBOT_BACKUP_HEARTBEAT_URL`・`UPTIMEROBOT_RANKING_HEARTBEAT_URL`は登録しない。両ジョブはURL未設定ならHeartbeatをスキップして通常どおり動く。自動通知はなく、未実行・失敗は確認時に見つける。
 
-| monitor | interval | grace period | supercronicの予定時刻 |
-|---|---|---|---|
-| SQLite backup | 24時間 | 30分 | 毎日18:00 UTC = 03:00 JST |
-| Ranking refresh | 12時間 | 30分 | 03:00・15:00 UTC = 12:00・00:00 JST |
+**2026-10-08手動実行**: バックアップとランキングをlock・timeout付きで実行し、どちらも終了コード0。ランキングは`quotes=1831 authors=755 categories=53`、`refreshed_at=2026-10-08T03:46:19.321958+00:00`。DBの`quote_ranking_scores`も1,831件、最大更新時刻は同時刻だった。両ジョブのHeartbeatは設定なしとしてスキップされた。次の定期実行は未確認。
 
-URLをそれぞれ `UPTIMEROBOT_BACKUP_HEARTBEAT_URL`・`UPTIMEROBOT_RANKING_HEARTBEAT_URL`として保管する。URL自体が秘密。間隔監視なので手動pingでも次の期限が更新される。初回デプロイ後、§3と§5.1の手動ジョブで受信を確認し、最初の定期実行後にも受信時刻を確認する。[公式Heartbeat](https://uptimerobot.com/help/heartbeat-monitoring/)
+supercronicの予定時刻はバックアップが毎日18:00 UTC（03:00 JST）、ランキング再計算が03:00・15:00 UTC（12:00・00:00 JST）。手動実行時と定期実行後に`fly logs --app meigensyu`で`backup succeeded key=...`と`ranking refresh succeeded ... refreshed_at=...`を確認する。バックアップはR2 dashboardの`daily/`に最新の`app-<UTC日時>.db`があることを確かめる。ランキングはMachine内のSQLiteで次を実行し、`refreshed_at`が予定した実行時刻に更新されていることを確かめる。ログは後から取得できる期間に限りがあるため、保存先の状態も確認する。
 
-公式アプリを管理者の端末へ導入しPush通知を主通知先、メールを予備に設定し、両monitorに紐付ける。テスト通知を確認する。初回稼働前はmonitorをpauseし、初回デプロイ直後に再開して手動ジョブを実行する。成功pingだけを送り、未着の検知とPush・メールもリリース前に実際に確認する。
+```bash
+fly ssh console --app meigensyu
+```
+
+コンテナ内で:
+
+```sh
+/app/.venv/bin/python - <<'PY'
+import sqlite3
+with sqlite3.connect('file:/data/app.db?mode=ro', uri=True) as db:
+    print(db.execute('SELECT count(*), max(refreshed_at) FROM quote_ranking_scores').fetchone())
+PY
+```
+
+ランキング対象が0件なら`max(refreshed_at)`はNULLになるため、手動実行の終了コードと成功ログで判定する。初回配置のquotesは1,831件ある。
 
 ### 4.2 切替時: HTTP外形監視
 
@@ -166,7 +183,11 @@ URL `https://www.meigensyu.com/healthz`、HTTP method **GET**（HEADは405）、
 
 ### 5.1 切替前: secretsと初回デプロイ
 
-**一部検証済み（2026-10-07）**。`TUNNEL_TOKEN`と`SECRET_KEY`を`--stage`で登録。最初のビルドは成功したが、`katamuki-org`の支払い情報未登録でMachine作成に失敗した。管理者が支払い方法を登録後、同じdeployコマンドで`nrt`にMachine `185173db303928`を1台作成した（イメージ363MB、Volume `vol_v3gkk0wjyy2137o4`を接続）。`fly ips list`は空、Machine設定にpublic serviceはない。内部`/healthz`は正しいHostで200、Hostなしで400、SQLiteはWAL。`uvicorn`・`cloudflared`の起動とTunnel接続を確認した。R2・Heartbeatが未設定のため`supervisorctl stop supercronic`で定期ジョブを停止中。Machine再起動時には再度起動するため、残りの設定前に再起動した場合は再停止する。残りのsecrets・ジョブ・通知確認は未検証。
+**一部検証済み（2026-10-07）**。`TUNNEL_TOKEN`と`SECRET_KEY`を`--stage`で登録。最初のビルドは成功したが、`katamuki-org`の支払い情報未登録でMachine作成に失敗した。管理者が支払い方法を登録後、同じdeployコマンドで`nrt`にMachine `185173db303928`を1台作成した（イメージ363MB、Volume `vol_v3gkk0wjyy2137o4`を接続）。`fly ips list`は空、Machine設定にpublic serviceはない。内部`/healthz`は正しいHostで200、Hostなしで400、SQLiteはWAL。`uvicorn`・`cloudflared`の起動とTunnel接続を確認した。R2資格情報が未設定のため`supervisorctl stop supercronic`で定期ジョブを停止中。Machine再起動時には再度起動するため、残りの設定前に再起動した場合は再停止する。残りのsecrets・ジョブ結果確認は未検証。
+
+**2026-10-08再確認**: Gitは`main`が`origin/main`より1コミット先（`50687b8`）、作業開始時の作業ツリーはクリーン。Flyは同じMachine 1台と暗号化Volume 1つが`nrt`で接続・起動中。`fly secrets list`には`TUNNEL_TOKEN`と`SECRET_KEY`だけがあり、`fly ips list`は空、Machineの表示設定にserviceはない。`supervisorctl status`では`cloudflared`・`uvicorn`がRUNNING、`supercronic`がSTOPPED（停止中プロセスがあるためコマンド終了コードは3）。
+
+**2026-10-08 secrets追加後**: 残りの6件を一度に`--stage`登録し、名前を確認して`fly secrets deploy --app meigensyu`で反映した。8件すべてDeployed。Machine `185173db303928`はversion 3で再起動し、`cloudflared`・`supercronic`・`uvicorn`がRUNNING。Machine 1台、暗号化Volume 1つ、public IP・serviceなし。内部healthzは正しいHostで200、Hostなしで400。
 
 §1・§2.1・§3・§4.1を済ませてから行う。`DATABASE_URL`・`PUBLIC_ORIGIN`は`fly.toml`の`[env]`にあるためsecretsに重ねない。
 
@@ -183,13 +204,13 @@ URL `https://www.meigensyu.com/healthz`、HTTP method **GET**（HEADは405）、
 | `BACKUP_R2_PREFIX` | §3 `daily/` | いいえ |
 | `BACKUP_R2_ACCESS_KEY_ID` | §3 S3 Access Key ID | はい |
 | `BACKUP_R2_SECRET_ACCESS_KEY` | §3 S3 Secret Access Key | はい |
-| `UPTIMEROBOT_BACKUP_HEARTBEAT_URL` | §4.1 backup monitor | はい |
-| `UPTIMEROBOT_RANKING_HEARTBEAT_URL` | §4.1 ranking monitor | はい |
+| `UPTIMEROBOT_BACKUP_HEARTBEAT_URL` | §4.1の方針変更により登録しない | はい |
+| `UPTIMEROBOT_RANKING_HEARTBEAT_URL` | §4.1の方針変更により登録しない | はい |
 | `GA_MEASUREMENT_ID` | 未導入のため登録しない | いいえ |
 | `ADSENSE_PUBLISHER_ID` | 未導入のため登録しない | いいえ |
 | `ADMIN_DEV_EMAIL` | 開発専用。**本番で設定しない** | メールアドレス |
 
-初回は`CF_ACCESS_AUD`・`GA_MEASUREMENT_ID`・`ADSENSE_PUBLISHER_ID`・`ADMIN_DEV_EMAIL`を除き、以下を変数ごとに繰り返す。標準入力からの登録には`fly secrets import`を使う。初回は`--stage`でMachineへの反映を延期し、必要な全変数を登録後にデプロイする。稼働後に即時反映する場合は`--stage`を付けずにimportする。この場合はMachineが再起動するため停止時間を見込む。秘密をコマンド引数やshell historyへ書かず、手元のbashで非表示入力し標準入力から登録する。デバッグ出力（`set -x`）は使わない。[公式secrets import](https://docs.fly.io/flyctl/cmd/fly_secrets_import)・[公式secrets](https://fly.io/docs/apps/secrets/)
+初回は`CF_ACCESS_AUD`・`GA_MEASUREMENT_ID`・`ADSENSE_PUBLISHER_ID`・`ADMIN_DEV_EMAIL`・2つの`UPTIMEROBOT_*_HEARTBEAT_URL`を除く。zone追加を保留する間は`CF_ZONE_ID`・`CF_API_TOKEN`も除く。標準入力からの登録には`fly secrets import`を使う。`--stage`でMachineへの反映を延期し、必要な全変数を登録後にデプロイする。既存Machineへ残りのsecretsを追加するときも、すべて`--stage`で登録してから名前を確認し、`fly secrets deploy --app meigensyu`で現在のリリースへまとめて反映する。これで登録ごとのMachine再起動を避け、未設定のまま`supercronic`が再起動する時間を作らない。秘密をコマンド引数やshell historyへ書かない。1件ずつなら手元のbashで非表示入力する。複数件をまとめる場合はリポジトリ外の一時ファイルを権限600で作り、`NAME=VALUE`を1行ずつ保存して`fly secrets import --app meigensyu --stage < ファイル名`で読み込ませ、成功後に削除する。デバッグ出力（`set -x`）は使わない。[公式secrets import](https://docs.fly.io/flyctl/cmd/fly_secrets_import)・[公式secrets](https://fly.io/docs/apps/secrets/)
 
 ```bash
 bash
@@ -209,6 +230,8 @@ fly ips list --app meigensyu
 fly machine status <machine-id> --app meigensyu --display-config
 ```
 
+既存Machineへの追加分だけを反映する場合、上の`fly deploy`ではなく`fly secrets deploy --app meigensyu`を使う。反映後にMachine 1台・public IPなし・serviceなしを再確認する。
+
 `fly secrets list`に`ADMIN_DEV_EMAIL`が無いことも確認する。Machineが1台だけ、serviceが空、public IPv4/IPv6が無いことを確認する。あれば `fly ips release <IP> --app meigensyu` で解放する。`*.fly.dev`へ公開HTTP入口を作らない。`--ha=false`は予備Machine作成を防ぐ（現在の既定はtrue）。[公式deployオプション](https://fly.io/docs/flyctl/deploy/)
 
 ```bash
@@ -226,7 +249,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host:' http://127.0.0.1:8000/health
 flock -n /tmp/refresh_rankings.lock timeout 300 /app/.venv/bin/python /app/scripts/refresh_rankings.py
 ```
 
-healthzは200、Hostなしは400。ログとstatusでUvicorn・cloudflared・supercronicの3つを確認し、`Registered tunnel connection`とZero TrustのHEALTHYを確認する。public hostnameはまだ付けない。§3のbackup手動実行とHeartbeat受信も確認する。
+healthzは200、Hostなしは400。ログとstatusでUvicorn・cloudflared・supercronicの3つを確認し、`Registered tunnel connection`とZero TrustのHEALTHYを確認する。public hostnameはまだ付けない。§3のbackupとランキングを手動実行し、§4.1の結果確認を行う。
 
 #### 切替前の一時プレビュー（2026-10-07検証済み）
 
@@ -339,6 +362,8 @@ ls -l "$archive_dir"
 
 ## 7. R2からの復旧
 
+**実機検証済み（2026-10-08）**。R2の`daily/app-20261008T034608Z.db`を管理者がダウンロードし、`data/restore.db`にコピーした。サイズ3,059,712バイト、`integrity_check=ok`、revision `0002`、authors 774件・quotes 1,831件・quote_likes 7,942件を確認。`/data/app-incoming.db`へSFTP転送し、手元とFly上のSHA-256一致を確認した。§6の共通入れ替え手順で旧DB/WAL/SHMを`/data/retired-20261008T041600Z/`へ退避して復元。復元後も同じrevision・件数で、内部`/healthz`と`/quotes`は200、名言カードあり、3プロセスRUNNING。バックアップは手動ランキング再計算の直前に作られたためsnapshot 3表は0件だったが、復元後に手動再計算し、`quote_ranking_scores` 1,831件・`refreshed_at=2026-10-08T04:16:53.309627Z`を確認した。旧サイトの最新データは切替直前に再移行する。
+
 R2 dashboardで成功ログに対応するバックアップobjectを選び、管理者の手元へ**ダウンロード**する（この手順ではS3クライアントは使わない）。`data/restore.db`として保存する。Gitへ追加しない。ローカルで:
 
 ```bash
@@ -364,7 +389,7 @@ put data/restore.db /data/app-incoming.db
 exit
 ```
 
-以降は**§6の共通入れ替え手順**をそのまま実施する。healthz・主要件数・公開ページ・管理更新を確認する。本番停止中はキャッシュHITで古い公開ページが見えることがあるため、内部確認とno-storeのhealthzを使う。復元確認は初回リリース前・大きな変更後・四半期を目安に行う。R2の取得からの実復旧演習は管理者の残作業。
+以降は**§6の共通入れ替え手順**をそのまま実施する。healthz・主要件数・公開ページを確認し、Access公開後なら管理更新も確認する。切替前は`CF_ACCESS_AUD`未設定のため管理更新を試せない。本番停止中はキャッシュHITで古い公開ページが見えることがあるため、内部確認とno-storeのhealthzを使う。復元確認は初回リリース前・大きな変更後・四半期を目安に行う。バックアップ時点でランキングsnapshotが空なら復元後にランキングを再計算する。
 
 ## 8. Tunnel tokenが漏れた場合
 

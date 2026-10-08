@@ -4,6 +4,8 @@
 
 **確定: 単一Fly Machine + Fly Volume + 日次R2バックアップを採用**（2026-07-14簡略化）
 
+> 運用方針更新（2026-10-08）: 有料Heartbeat通知は使わず、R2の最新バックアップオブジェクトとFlyの成功ログを手動確認する。以下のHeartbeat記述は当初案であり、現在の手順は[運用runbook §4.1](../operations-runbook.md#41-切替前-定期ジョブの結果確認)を正本とする。
+
 > 追記（2026-07-17）: 本番実測では、likes・中間表・snapshot等を含むDB全体は20,833行（下記「約3,000行」は主要コンテンツの規模）。DB全体でも数MB程度の小規模に変わりなく、決定内容は変わらない。
 
 ## コンテキスト
@@ -16,7 +18,7 @@
 - LiteFS、Litestream、複数Machineによる自動フェイルオーバーは初期導入しない。
 - 毎日1回、`sqlite3.Connection.backup()`で一貫した一時DBを作り、`PRAGMA integrity_check`後にCloudflare R2へ保存する。稼働DBを単純に`cp`しない。
 - R2の`daily/`配下へUTC日時を含む一意なオブジェクト名で保存し、同一キーを上書きしない。Lifecycleで各オブジェクトを30日後に自動削除する。Bucket LockとFly Volume snapshotの追加設定は必須としない。
-- バックアップ成功時だけ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければ公式アプリPushを主、メールを予備として通知し、最新成功時刻を確認できるログも残す。アプリ内に独自の鮮度監視機能は作らない。
+- バックアップ成功時にキー・サイズ・所要時間をログへ出す。R2の`daily/`に最新のオブジェクトがあることを手動確認する。自動通知とアプリ内の鮮度監視機能は作らない。
 - 大きなデータ移行または破壊的migrationの前にはオンデマンドバックアップを取得する。通常の小さなmigrationでは任意とする。
 
 ## migration時の手順
@@ -38,7 +40,7 @@
 
 ## 運用・検証
 
-- バックアップ成功時のHeartbeat pingと、未着時のアプリPush・メール通知をリリース前に確認する。
+- バックアップ成功ログとR2オブジェクトをリリース前に確認する。
 - 復元確認は初回リリース前、大きなスキーマ変更後、または四半期を目安に実施する。月次演習は必須としない。
 - 暫定目標は正常時RPO約24時間、RTO数時間以内とする。
 
@@ -58,4 +60,4 @@
 
 R2へのアップロードは`boto3`を追加せず、標準ライブラリの`hashlib`・`hmac`・`urllib.request`でSigV4署名した単一PUTとする。数MBのDBにmultipartは不要。キーは`daily/app-<UTC日時（秒まで）>.db`、圧縮なし。R2必須設定が不足したら欠けた変数名を示して非ゼロ終了する。Heartbeat URLと署名・鍵はログに出さない。
 
-復旧の具体的なコマンドは[運用runbook §6・§7](../operations-runbook.md#6-sqliteファイルの配置と入れ替え最終移行)。R2 dashboardから手元へ取得し、検査して別名でVolumeへ置き、Uvicorn・supercronicを止めて旧DB/WAL/SHMをまとめて退避する。cloudflaredは止めない。ローカル演習はR2取得を本番相当の手元DBで代用した。本物のR2取得・通知・復元検収は管理者がリリース前に行う。
+復旧の具体的なコマンドは[運用runbook §6・§7](../operations-runbook.md#6-sqliteファイルの配置と入れ替え最終移行)。R2 dashboardから手元へ取得し、検査して別名でVolumeへ置き、Uvicorn・supercronicを止めて旧DB/WAL/SHMをまとめて退避する。cloudflaredは止めない。ローカル演習はR2取得を本番相当の手元DBで代用した。2026-10-08に本物のR2取得・復元検収も完了した。

@@ -150,7 +150,7 @@ FastAPI標準の`/docs`、`/redoc`、`/openapi.json`は公開ルートの対象�
 - 稼働中のSQLiteファイルを単純に `cp` しない。Python `sqlite3.Connection.backup()`（SQLite Online Backup API）で一貫した一時DBを生成する。
 - 毎日03:00 JSTに、Uvicorn workerとは独立した専用 `supercronic` プロセスから単一ジョブを実行する。
 - 一時DBを`integrity_check`後にCloudflare R2へアップロードする。
-- 成功時だけジョブ専用のUptimeRobot Heartbeat URLへpingする。予定時刻までにpingがなければUptimeRobot公式アプリのPush通知を送り、メールも予備の通知先とする。最新成功時刻はジョブログでも確認できるようにする。
+- 成功時はジョブログに結果を残す。バックアップはR2の最新オブジェクト、ランキングはsnapshot表の更新時刻を手動確認する。2026-10-08の運用判断により、定期ジョブの有料Heartbeat通知は使わない。
 - R2の`daily/` prefixへUTC日時を含む一意な名前で上書きせず保存し、Lifecycleで30日後に削除する。Bucket Lockと追加snapshotは初期必須としない。
 - 正常に日次ジョブが動いている場合のRPOは約24時間、RTOは30分〜数時間を暫定目標とする。ジョブ失敗・未検知時はRPOを超過する。
 - 大きなデータ移行または破壊的migration前にはオンデマンドバックアップを取得する。
@@ -211,7 +211,7 @@ primary_region = "nrt"
 - PID 1の最小限のプロセス監督でUvicorn、`cloudflared`、supercronicを起動・再起動する。アプリ固有の状態管理は持たせない
 - `/healthz`は`private, no-store`とCloudflare Bypassを設定し、外形監視とデプロイ後smoke testに使う
 
-FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップ、ランキング、カテゴリ集計はsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了、成功時のUptimeRobot Heartbeat pingを使う。ping未着時は公式アプリPushを主、メールを予備として通知する。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
+FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックアップとランキングはsupercronicからCLIとして実行し、ジョブ別`flock`、timeout、非ゼロ終了と成功ログを使う。定期ジョブ用Heartbeat URLは設定せず、保存先の状態を手動確認する。独自の共有maintenance lockや鮮度APIは作らない。負荷観測後に必要な場合だけHTTP workerを2へ増やす（[`005-uvicorn-supercronic-jobs.md`](005-uvicorn-supercronic-jobs.md)）。
 
 ## 8. Cloudflare 設定
 
@@ -239,8 +239,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - SQLiteファイルをマウントしないFlyの `release_command` ではmigrationを実行しない。VolumeをマウントしたMachineでUvicorn worker起動前に一度だけ実行する
 - migration時は短いmaintenance windowを設け、破壊的変更では事前バックアップを取得して`alembic upgrade head`を実行し、主要ページを確認する
 - ログ: Fly.io の標準ログ + Cloudflare Analytics
-- 監視: Fly.ioメトリクスを参照し、UptimeRobotで`/healthz`の外形監視と定期ジョブのHeartbeat監視を行う。異常時は公式アプリPushを主、メールを予備として通知する
-- バックアップ: SQLite Online Backup APIによる日次R2保存。Heartbeat未着時は同じ通知経路を使い、復元確認はリリース前・大きな変更後・四半期を目安に行う
+- 監視: Fly.ioメトリクスを参照する。`/healthz`のUptimeRobot外形監視は切替時に検討し、定期ジョブの実行結果はR2オブジェクト・ランキングsnapshot更新時刻・Flyログで手動確認する
+- バックアップ: SQLite Online Backup APIによる日次R2保存。復元確認はリリース前・大きな変更後・四半期を目安に行う
 
 ## 10. 環境変数
 
@@ -258,7 +258,7 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 | `ADSENSE_PUBLISHER_ID` | 本体完成後、AdSenseを導入する場合だけ設定。未設定時は広告コードを出さない |
 | `BACKUP_R2_ENDPOINT` / `BACKUP_R2_BUCKET` / `BACKUP_R2_PREFIX` | 日次SQLiteバックアップの保存先（prefix初期値: `daily/`） |
 | `BACKUP_R2_ACCESS_KEY_ID` / `BACKUP_R2_SECRET_ACCESS_KEY` | バックアップ専用バケットだけに限定した資格情報 |
-| `UPTIMEROBOT_*_HEARTBEAT_URL` | 本番定期ジョブごとのHeartbeat URL（Fly secret）。ローカルでは未設定でよい |
+| `UPTIMEROBOT_*_HEARTBEAT_URL` | 当初案の任意設定。2026-10-08の方針変更により本番でも設定しない |
 
 ## 11. セキュリティ
 
@@ -303,8 +303,8 @@ FastAPIのstartup/lifespanでは定期ジョブを起動しない。バックア
 - [ ] Admin から名言更新後、該当URLがパージされ最新内容が返る
 - [ ] SQLite が WAL モードで動いている
 - [ ] 初期構成のUvicorn 1 workerで各定期ジョブが1回だけ実行され、supercronic停止・timeout・失敗を検知できる。2 workerへ変更する場合は同じ回帰確認を行う
-- [ ] 日次バックアップがR2へ保存され、失敗時に通知される
-- [ ] リリース前または大きな変更後にR2バックアップから復元し、`integrity_check`、Alembic revision、主要件数を確認できる
+- [ ] 日次バックアップがR2へ保存され、最新オブジェクトと成功ログを手動確認できる
+- [x] リリース前にR2バックアップから復元し、`integrity_check`、Alembic revision、主要件数を確認できる（2026-10-08、runbook §7）
 - [ ] 空DBと本番相当DBの両方で `alembic upgrade head` が成功する
 - [ ] `/healthz` が`private, no-store`かつCloudflare Bypassで200を返し、外形監視とデプロイ後smoke testがorigin停止を検知する
 - [ ] 名言・著者OG画像がADR 018のURLで生成され、2回目の取得がエッジキャッシュHITになる

@@ -36,6 +36,7 @@
 
 - 名言のslugを追加・変更・削除した場合は、旧新の詳細・OG画像に加えて、エッジで301がキャッシュされる`/quotes/q{id}`もパージする。4桁数字と`/quotations/view/{id}.html`の旧URLはTTLへ委ねる。
 - 職業の更新では職業一覧と旧新の職業詳細だけをパージし、関連著者の詳細はTTLへ委ねる。1職業に最大155人の著者が紐づく実データがあり、「関連する少数URL」の範囲を超えるためである。
+  - 2026-10-08追記: 職業詳細を著者一覧`/professions/{slug}`と名言一覧`/professions/{slug}/quotes`に分けたため、職業詳細として両方の1ページ目をパージする。著者の作成・更新・削除では、従来どおりその著者の職業の`/professions/{slug}`（著者一覧）をパージし、`/professions/{slug}/quotes`はTTLへ委ねる。
 - 一括登録では新規entityごとの詳細URLを列挙しない。名言はトップ・名言一覧・新着・sitemapと共通指定した関連先の詳細、著者は著者一覧とsitemapだけをパージする。
 - categories、characters、sources、professionsの更新は、各一覧、旧新の詳細、sitemap対象表ではsitemap、直接影響する少数の関連詳細だけをパージする。ページング2ページ目以降などはTTLへ委ねる。
 

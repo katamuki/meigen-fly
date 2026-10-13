@@ -191,6 +191,8 @@ URL `https://www.meigensyu.com/healthz`、HTTP method **GET**（HEADは405）、
 
 **2026-10-08 secrets追加後**: 残りの6件を一度に`--stage`登録し、名前を確認して`fly secrets deploy --app meigensyu`で反映した。8件すべてDeployed。Machine `185173db303928`はversion 3で再起動し、`cloudflared`・`supercronic`・`uvicorn`がRUNNING。Machine 1台、暗号化Volume 1つ、public IP・serviceなし。内部healthzは正しいHostで200、Hostなしで400。
 
+**2026-10-13 再デプロイ**: `4b35fe1`を上の`fly deploy`でv4（`deployment-01M4T31CFJQGVTQ2KZ8PRV0BMK`）として反映。戻し先はv3（`deployment-01M4AE25GJ61P80YKTK24NWPC6`）。migrationなし（revision `0002`のまま）。Machine 1台のまま、public IPなし。3プロセスRUNNING、内部healthzは正しいHostで200・Hostなしで400、`/quotes`・`/ranking`・`/professions`（カード35・文字一覧298）・著者ページ・新CSS `components.46666903.css`が200。DB件数は再配置時と同じ。
+
 §1・§2.1・§3・§4.1を済ませてから行う。`DATABASE_URL`・`PUBLIC_ORIGIN`は`fly.toml`の`[env]`にあるためsecretsに重ねない。
 
 | 変数名 | 値の出どころ | 秘密か |

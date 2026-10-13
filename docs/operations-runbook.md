@@ -291,6 +291,8 @@ fly deploy --app meigensyu --image <直前のイメージ参照> --ha=false --no
 
 **初回配置を検証済み（2026-10-07）**。手元の`data/app.db`を`fly ssh sftp put data/app.db /data/app-incoming.db --app meigensyu`で転送し、SHA-256の一致を確認した。空DBと入れ替えてrevision `0002`、integrity `ok`、authors 774件、quotes 1,831件、内部`/quotes` 200・名言カードありを確認。手元DBのランキング3テーブルは0件で、初回プレビューのRanking表示は集計前。最終移行時には旧環境から最新データを再取得して置き換える。
 
+**2026-10-13 再配置**: 旧本番から再取得して紹介文を修正したDB（[migration-runbook §7](database/migration-runbook.md#7-実施記録)）を同じ手順で配置した。SFTPの`put`は標準入力から渡して非対話で実行でき、手元とFly上のSHA-256一致を確認。旧DB/WAL/SHMは`/data/retired-20261013T073251Z/`へ退避。revision `0002`、integrity `ok`、authors 774・quotes 1,831・quote_likes 9,433。ランキングを手動再計算し、`quote_ranking_scores` 1,831件・`refreshed_at=2026-10-13T07:33:10.373951Z`。内部`/healthz`・`/quotes`・`/ranking`は200、紹介文の修正を著者ページで確認、3プロセスRUNNING。
+
 **実機差分**: `fly ssh console`の対話シェルでは仮想環境が`PATH`に入らず、`alembic`が見つからなかった。以下は`/app/.venv/bin/`を明示する。`set -e`中の`supervisorctl status`は停止中のプロセスがあると非0で終了するため、表示目的なら`|| true`を付ける。
 
 切替直前に旧Admin・いいね書き込みを短時間凍結し、[migration-runbook §5](database/migration-runbook.md#5-再実行可能な手順取得変換投入検証)を再実行して最新の `data/app.db` を作る。§7と同じ手元検査を行う。稼働中のDBファイルを単純コピーしない。

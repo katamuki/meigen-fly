@@ -2,7 +2,7 @@
 
 更新日: 2026-10-08（フェーズ6準備の実機確認を反映）。単一Machine・単一Volume、短い停止を許容する。
 
-**実機検証済みは§1、§2.1の一部、§3の手動PUT・取得、§4.1の手動実行、§5.1、§6の初回DB配置、§7のR2復旧演習**。Fly Machineへの初回デプロイ、Tunnel connectorの接続、内部healthz、手元DBの配置、localhostと一時的な`trycloudflare.com`での画面表示を確認した。R2バケットとLifecycleを設定し、バックアップの保存・取得・復元を確認した。次の定期実行、Cloudflare zone・API token、GitHubの操作は未検証。定期ジョブのUptimeRobot Heartbeatは使用しない。公式資料で仕様を確認した箇所にはリンクを付けた。
+**実機検証済みは§1、§2.1の一部、§3の手動PUT・取得、§4.1の手動・定期実行、§5.1、§6の初回DB配置、§7のR2復旧演習**。Fly Machineへの初回デプロイ、Tunnel connectorの接続、内部healthz、手元DBの配置、localhostと一時的な`trycloudflare.com`での画面表示を確認した。R2バケットとLifecycleを設定し、バックアップの保存・取得・復元を確認した。Cloudflare zone・API token、GitHubの操作は未検証。定期ジョブのUptimeRobot Heartbeatは使用しない。公式資料で仕様を確認した箇所にはリンクを付けた。
 
 実行順は **§1 → §2.1 → §3 → §4.1 → §5.1（secrets・初回デプロイ）**。切替時は **旧書き込み凍結・§6 → §2.2〜2.6 → §4.2 → §5.2**。§7・§8は障害時に使う。コマンドはリポジトリ直下から実行する。`<...>`は管理者が得た値に置換し、秘密の実値を資料・Git・ログへ貼らない。
 
@@ -125,7 +125,7 @@ Characteristics: IP、Requests: **10**、Period: **10 seconds**、Action: **Bloc
 
 ## 3. R2（切替前）
 
-**手動実行を検証済み（2026-10-08）**。CloudflareのR2初期画面で、バケット作成前にR2サブスクリプションの追加が必要と判明した。管理者が追加を完了し、契約完了画面で有効化を確認した。非公開バケット`meigensyu-backups`をアジア太平洋・Standardで作成。カスタムドメインは未割当、パブリック開発URLは無効。Lifecycle `daily-30-days`はprefix `daily/`、30日後にオブジェクト削除、Enabledを画面で確認した。既定の7日後multipart中止ルールもEnabledのまま。管理者がバケット限定Object Read & WriteのAccount APIトークンを作成し、S3 Access Key IDとSecret Access Keyを手元に保管した。手動PUTの成功ログと、dashboardから取得したオブジェクトのサイズ・SQLite整合性を確認した。定期実行は未確認。
+**手動実行を検証済み（2026-10-08）**。CloudflareのR2初期画面で、バケット作成前にR2サブスクリプションの追加が必要と判明した。管理者が追加を完了し、契約完了画面で有効化を確認した。非公開バケット`meigensyu-backups`をアジア太平洋・Standardで作成。カスタムドメインは未割当、パブリック開発URLは無効。Lifecycle `daily-30-days`はprefix `daily/`、30日後にオブジェクト削除、Enabledを画面で確認した。既定の7日後multipart中止ルールもEnabledのまま。管理者がバケット限定Object Read & WriteのAccount APIトークンを作成し、S3 Access Key IDとSecret Access Keyを手元に保管した。手動PUTの成功ログと、dashboardから取得したオブジェクトのサイズ・SQLite整合性を確認した。定期実行は2026-10-13に確認済み（§4.1）。
 
 **2026-10-08手動PUT**: `backup_sqlite.py`が終了コード0で、`backup succeeded key=daily/app-20261008T034608Z.db bytes=3059712 duration_seconds=1.038`を出した。管理者がR2 dashboardから同オブジェクトを取得し、3,059,712バイトのSQLiteとして整合性を確認した。§7で復元済み。
 
@@ -155,7 +155,9 @@ flock -n /tmp/backup_sqlite.lock timeout 600 /app/.venv/bin/python /app/scripts/
 
 **方針変更（2026-10-08、手動実行を検証済み）**。管理者は定期ジョブの実行結果を手動確認できればよいと判断し、UptimeRobotの有料Heartbeat契約を行わない。`UPTIMEROBOT_BACKUP_HEARTBEAT_URL`・`UPTIMEROBOT_RANKING_HEARTBEAT_URL`は登録しない。両ジョブはURL未設定ならHeartbeatをスキップして通常どおり動く。自動通知はなく、未実行・失敗は確認時に見つける。
 
-**2026-10-08手動実行**: バックアップとランキングをlock・timeout付きで実行し、どちらも終了コード0。ランキングは`quotes=1831 authors=755 categories=53`、`refreshed_at=2026-10-08T03:46:19.321958+00:00`。DBの`quote_ranking_scores`も1,831件、最大更新時刻は同時刻だった。両ジョブのHeartbeatは設定なしとしてスキップされた。次の定期実行は未確認。
+**2026-10-08手動実行**: バックアップとランキングをlock・timeout付きで実行し、どちらも終了コード0。ランキングは`quotes=1831 authors=755 categories=53`、`refreshed_at=2026-10-08T03:46:19.321958+00:00`。DBの`quote_ranking_scores`も1,831件、最大更新時刻は同時刻だった。両ジョブのHeartbeatは設定なしとしてスキップされた。
+
+**2026-10-13定期実行の確認**: R2 dashboardの`daily/`に、2026-10-08〜10-12の18:00 UTC分の`app-<UTC日時>.db`5件（各3.22MB）と手動PUT分が揃っていた。取得できたFlyログは2026-10-12 15:00 UTC以降で、その範囲のランキング2回（10-12 15:00・10-13 03:00 UTC）とバックアップ1回（10-12 18:00 UTC、`daily/app-20261012T180002Z.db`・3,223,552バイト）が`job succeeded`、失敗・エラーの記録はなかった。ランキングはCloudflare未設定のためpurgeをスキップする。DBの`quote_ranking_scores`は1,831件、`max(refreshed_at)`は`2026-10-13T03:00:02.389093Z`。R2のオブジェクトのContent-Typeは`application/x-www-form-urlencoded`と表示されるが、§7の取得・復元には影響しない。
 
 supercronicの予定時刻はバックアップが毎日18:00 UTC（03:00 JST）、ランキング再計算が03:00・15:00 UTC（12:00・00:00 JST）。手動実行時と定期実行後に`fly logs --app meigensyu`で`backup succeeded key=...`と`ranking refresh succeeded ... refreshed_at=...`を確認する。バックアップはR2 dashboardの`daily/`に最新の`app-<UTC日時>.db`があることを確かめる。ランキングはMachine内のSQLiteで次を実行し、`refreshed_at`が予定した実行時刻に更新されていることを確かめる。ログは後から取得できる期間に限りがあるため、保存先の状態も確認する。
 

@@ -338,7 +338,7 @@ meigen-fly/
 - [x] Fly app `meigensyu`（既存、`katamuki-org`）とVolume `data`（1GB、`nrt`、1つ）の確認・作成（2026-10-06、runbook §1）
 - [x] `TUNNEL_TOKEN`・`SECRET_KEY`登録、初回デプロイ、`nrt`のMachine 1台と内部healthz、手元DBの初回配置、localhost・一時的な`trycloudflare.com`での画面確認（2026-10-07、runbook §5.1・§6）
 - [x] 残りのFly secrets登録、定期ジョブ再開と内部確認（2026-10-08、runbook §5.1。8件Deployed、3プロセスRUNNING、内部healthz 200）
-- [ ] R2バケット限定資格情報・実PUT、ジョブの成功ログとR2最新オブジェクト・ランキング更新時刻の確認。バケットと`daily/`の30日Lifecycleを設定し、2026-10-08に手動PUTの成功ログ、R2からの取得、ランキング更新時刻を確認。次の定期実行は未確認。Heartbeat通知は使わない（runbook §3・§4.1）
+- [x] R2バケット限定資格情報・実PUT、ジョブの成功ログとR2最新オブジェクト・ランキング更新時刻の確認。バケットと`daily/`の30日Lifecycleを設定し、2026-10-08に手動PUTの成功ログ、R2からの取得、ランキング更新時刻を確認。2026-10-13に定期実行のR2オブジェクト5日分・成功ログ・`refreshed_at`を確認。Heartbeat通知は使わない（runbook §3・§4.1）
 - [x] R2から取得してのリリース前復元確認（2026-10-08、runbook §7・§6。revision `0002`、authors 774件・quotes 1,831件、内部healthz・名言一覧200）
 - [ ] Cloudflare DNS/SSL/Tunnel route・Cache Rules（OG/sitemap/robotsを含む）・WAF・Access。リポジトリ側は完了（2026-10-06、5-C）、残りはrunbook §2（§2.1のみ切替前、他は切替時）
 - [x] Cloudflare Tunnel `meigensyu`の作成、公開routeなし、team domainの控え、Google IdPの接続テスト成功。2026-10-08にTunnel「正常」・レプリカ1・ルートなしとGoogleの2段階認証有効を確認（runbook §2.1）

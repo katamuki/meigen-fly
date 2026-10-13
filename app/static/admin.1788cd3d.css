@@ -34,7 +34,7 @@ a { color: var(--accent); }
 .admin-stats dt { color: var(--muted); font-size: var(--fs-small); }
 .admin-stats dd { margin: var(--sp-2) 0 0; font-size: var(--fs-display); font-weight: 700; }
 .admin-menu { margin-top: var(--sp-6); }
-.admin-menu-list { display: flex; flex-wrap: wrap; gap: var(--sp-5); padding-left: var(--sp-5); }
+.admin-menu-list { display: flex; flex-wrap: wrap; gap: var(--sp-6); padding-left: 0; list-style: none; }
 .admin-notice { border-color: var(--accent-soft); }
 .admin-menu button,
 .admin-form button,
@@ -55,7 +55,7 @@ a { color: var(--accent); }
 .admin-search,
 .admin-form-actions,
 .admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
-.admin-search { justify-content: flex-start; margin: var(--sp-5) 0; }
+.admin-search { justify-content: flex-start; margin: var(--sp-6) 0; }
 .admin-table-wrap { overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; background: var(--surface); }
 .admin-table th,
@@ -63,8 +63,8 @@ a { color: var(--accent); }
 .admin-actions { white-space: nowrap; }
 .admin-actions a + a { margin-left: var(--sp-3); }
 .admin-danger-link { color: var(--accent); font-weight: 700; }
-.admin-pagination { justify-content: center; margin-top: var(--sp-5); }
-.admin-form { display: grid; gap: var(--sp-5); }
+.admin-pagination { justify-content: center; margin-top: var(--sp-6); }
+.admin-form { display: grid; gap: var(--sp-6); }
 .admin-form label { display: grid; gap: var(--sp-2); }
 .admin-form input,
 .admin-form select,

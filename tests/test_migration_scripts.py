@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
-from scripts import load_source_data, verify_migration
+from scripts import fix_author_descriptions, load_source_data, verify_migration
 from tests.test_migrations import upgrade_to_head
 
 T1 = "2025-07-04T12:14:33+00:00"  # no fractional seconds
@@ -297,3 +297,40 @@ def test_missing_dump_column_is_rejected_by_loader_and_verifier(
             load_source_data.load(short_dir, fresh_engine)
     finally:
         fresh_engine.dispose()
+
+
+def test_fix_author_descriptions_applies_only_to_expected_text(
+    tmp_path: Path, migrated_db: Path, monkeypatch
+) -> None:
+    (tmp_path / "dump").mkdir()
+    source_dir = write_dump(tmp_path / "dump", DUMP)
+    engine = load_source_data.create_db_engine(f"sqlite:///{migrated_db}")
+    query = text("SELECT id, description, updated_at FROM authors ORDER BY id")
+    try:
+        load_source_data.load(source_dir, engine)
+        with engine.connect() as connection:
+            before = connection.execute(query).all()
+
+        monkeypatch.setattr(
+            fix_author_descriptions,
+            "FIXES",
+            {1479: ("詩人", "古代ローマの詩人"), 2232: ("別の文", None)},
+        )
+        with pytest.raises(fix_author_descriptions.FixError, match="author 2232"):
+            fix_author_descriptions.apply_fixes(engine)
+        with engine.connect() as connection:
+            assert connection.execute(query).all() == before
+
+        monkeypatch.setattr(
+            fix_author_descriptions,
+            "FIXES",
+            {1479: ("詩人", "古代ローマの詩人"), 2232: (None, None)},
+        )
+        assert fix_author_descriptions.apply_fixes(engine) == 2
+        with engine.connect() as connection:
+            rows = connection.execute(query).all()
+        assert rows[0][1] == "古代ローマの詩人"
+        assert rows[0][2] != before[0][2]
+        assert rows[1][1] is None
+    finally:
+        engine.dispose()

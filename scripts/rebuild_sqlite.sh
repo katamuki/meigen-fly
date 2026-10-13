@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build a fresh SQLite database from the exported JSON Lines dump and verify it.
 #
-# Steps: remove the target file -> alembic upgrade head -> load -> verify.
+# Steps: remove the target file -> alembic upgrade head -> load -> verify
+# -> fix known mistakes in author descriptions.
 # Re-running always starts from an empty file, so the same command is used for
 # local rehearsals and for the final cut-over migration.
 #
@@ -18,3 +19,4 @@ rm -f "$DB_PATH" "$DB_PATH-wal" "$DB_PATH-shm"
 DATABASE_URL="sqlite:///$DB_PATH" uv run alembic upgrade head
 uv run python scripts/load_source_data.py --source-dir "$SOURCE_DIR" --database "$DB_PATH"
 uv run python scripts/verify_migration.py --source-dir "$SOURCE_DIR" --database "$DB_PATH"
+uv run python scripts/fix_author_descriptions.py --database "$DB_PATH"

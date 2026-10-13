@@ -76,7 +76,9 @@ scripts/export_source_db.sh
 scripts/rebuild_sqlite.sh [SOURCE_DIR] [DB_PATH]
 ```
 
-`rebuild_sqlite.sh`は「DBファイル削除 → `alembic upgrade head` → `load_source_data.py` → `verify_migration.py`」を順に実行し、検証が1件でも失敗すれば非0で終了する。
+`rebuild_sqlite.sh`は「DBファイル削除 → `alembic upgrade head` → `load_source_data.py` → `verify_migration.py` → `fix_author_descriptions.py`」を順に実行し、検証が1件でも失敗すれば非0で終了する。
+
+`fix_author_descriptions.py`は旧本番に残っていた著者紹介文の誤り（外国語の混入、作成時の作業メモ、同姓同名の別人の可能性がある紹介文）を直す。旧本番は直さず、移行のたびにこの手順で当てる。検証はダンプとの全列比較なので、修正は検証の後に行う。修正ごとに旧本番の紹介文全文を期待値として持ち、1件でも一致しなければ何も変えずに非0で終了する（旧本番が編集されていたら修正内容を見直す）。
 
 ## 6. 整合性検証（[`scripts/verify_migration.py`](../../scripts/verify_migration.py)）
 
@@ -101,5 +103,6 @@ scripts/rebuild_sqlite.sh [SOURCE_DIR] [DB_PATH]
 |---|---|---|
 | 2026-08-20 | 本番から取得（06:43 UTC）→ `rebuild_sqlite.sh` | 全検証PASS。authors 774・quotes 1,831・quote_likes 7,942（2026-07-17の7,591から増加）・legacy票合計24,044・高水位3,197。DBファイル約3MB |
 | 2026-08-25 | レビュー指摘4件（行単位の全列比較、拒否行の診断、列欠落検出×2）を反映し、同ダンプで`rebuild_sqlite.sh`を再実行 | 全検証PASS（86項目）。フェーズ2完了 |
+| 2026-10-13 | 本番から取得（07:18 UTC、`source-db/data-20261013/`）→ `rebuild_sqlite.sh` | 全検証PASS（86項目）。authors 774・quotes 1,831・quote_likes 9,433・legacy票合計24,044・高水位3,197。著者は8月から変更なし。紹介文17件を修正（1件の外国語混入、1件の作業メモ削除、15件を空に） |
 
 フェーズ6の最終移行では、旧環境の書き込み凍結後に同じ2コマンドを実行し、本記録へ追記する。

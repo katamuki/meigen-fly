@@ -466,7 +466,7 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
         "/static/theme.caadaed0.js",
         "/static/likes.69f6de74.js",
         "/static/tokens.74bc89e2.css",
-        "/static/components.ee83c6a6.css",
+        "/static/components.46666903.css",
     ):
         asset = public_client.get(path)
         assert asset.status_code == 200
@@ -477,7 +477,7 @@ def test_hashed_design_assets_and_external_theme_script_are_served(
     assert "window.crypto.randomUUID" in like_script
     assert 'method: "POST"' in like_script
 
-    mobile_css = public_client.get("/static/components.ee83c6a6.css").text
+    mobile_css = public_client.get("/static/components.46666903.css").text
     assert ".mg-header__spacer { display: none; }" in mobile_css
     assert ".mg-header .mg-search > svg { flex: 0 0 15px; }" in mobile_css
     assert ".mg-header .mg-search__input { min-width: 0; }" in mobile_css
@@ -954,6 +954,28 @@ def test_character_profession_and_country_pages_keep_zero_counts_and_404(
         "/authors/places/not-found",
     ):
         assert public_client.get(path).status_code == 404
+
+
+def test_professions_index_shows_cards_only_for_professions_with_many_quotes(
+    public_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    listing = public_client.get("/professions")
+
+    assert "mg-author-card" not in listing.text
+    assert "すべての職業" in listing.text
+    assert re.search(
+        r'<li><a href="/professions/philosopher" data-entity-id="20" '
+        r'data-quote-count="1">[^<]+<span class="mg-index__count">1</span>',
+        listing.text,
+    )
+
+    monkeypatch.setattr("app.routers.public.PROFESSION_CARD_MIN_QUOTES", 1)
+    listing = public_client.get("/professions")
+    cards, rest = listing.text.split("ほかの職業")
+
+    assert 'class="mg-author-card" href="/professions/philosopher"' in cards
+    assert 'data-entity-id="21" data-quote-count="0"' in rest
+    assert 'data-entity-id="20"' not in rest
 
 
 def test_profession_detail_lists_authors_and_links_to_quotes(

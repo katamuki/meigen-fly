@@ -192,7 +192,7 @@ def test_admin_accepts_valid_assertion_and_shows_dashboard(admin_client) -> None
     assert "非公開名言" in response.text
     assert "ログアウト" in response.text
     assert '<meta name="robots" content="noindex, nofollow">' in response.text
-    assert "components.ee83c6a6.css" not in response.text
+    assert "components.46666903.css" not in response.text
     assert "admin.1788cd3d.css" in response.text
     assert "htmx" not in response.text.lower()
 

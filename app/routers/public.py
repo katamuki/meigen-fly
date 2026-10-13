@@ -82,6 +82,8 @@ APP_DIR = Path(__file__).resolve().parents[1]
 PUBLIC_ORIGIN = get_public_origin()
 DEFAULT_OG_PATH = APP_DIR / "static" / DEFAULT_OG_FILENAME
 LEGACY_QUOTE_ID = re.compile(r"[0-9]{4}\Z")
+# 名言がこの件数以上の職業だけカードで見せ、残りは文字の一覧にする
+PROFESSION_CARD_MIN_QUOTES = 20
 
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.filters["comma"] = lambda value: f"{value:,}"
@@ -820,17 +822,17 @@ def character_detail_page(
 def professions_index(
     request: Request, connection: ConnectionDependency
 ) -> HTMLResponse:
-    items = list_professions(connection)
+    items = sorted(list_professions(connection), key=lambda item: -item["quote_count"])
+    featured = [
+        item for item in items if item["quote_count"] >= PROFESSION_CARD_MIN_QUOTES
+    ]
     return templates.TemplateResponse(
         request=request,
-        name="master_list.html",
+        name="profession_list.html",
         context={
-            "items": items,
-            "title": "職業から探す",
-            "entity_type": "profession",
-            "base_path": "/professions",
+            "featured": featured,
+            "others": items[len(featured) :],
             "total": len(items),
-            "pagination": None,
         },
     )
 

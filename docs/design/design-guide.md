@@ -63,6 +63,7 @@ CSP `script-src 'self'`（[ADR 016](../decisions/016-csp-htmx-rules.md)）に従
 - **著者**: `mg-author` / `mg-author-card` / `mg-author-profile` / `mg-avatar`（`--lg`/`--sm`）/ `mg-author-chip`
 - **著者の項目**: `mg-entries` / `mg-entry`（`__head` `__name` `__sub` `__bio` `__count`）。職業別・国別の著者一覧で、人名辞典の項目のように明朝の名前・原綴・生没年（年まで）・紹介文全文を本文幅の1カラムに並べ、罫線で区切る。全著者一覧`/authors`は`mg-author-card`の3列のまま
 - **絞り込み帯**: `mg-facets` / `mg-facet`（`__label` `__body` `__chips` `__more`）。`/authors`の職業・国チップを、左の見出し付きで上位12件だけ並べる。モバイルではチップを1行の横スクロールにする
+- **索引一覧**: `mg-index`（`__count`）。`/professions`でカードにしない職業を、名前と名言数だけの細い罫線区切りの段組みで並べる（PC 6段・モバイル2段）
 - **チップ**: `mg-chip`（`--accent` / `--sort-active` / `mg-chips--center`）/ `mg-chips`
 - **ランキング**: `mg-rank` / `mg-rank-row` / `mg-rank-num`（`--1`）/ `mg-medal`（`--1`〜`--3`）
 - **その他**: `mg-hero`・`mg-hero-band`（名言主役）/ `mg-pagination` `mg-page`（**ページネーション**。ユーティリティの `mg-page-body` とは別）/ `mg-cat-card` / `mg-section-head`（`--end`）/ `mg-grid-2` `mg-grid-3`

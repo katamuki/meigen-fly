@@ -85,6 +85,13 @@ mark { background: var(--mark); color: var(--ink); padding: 0 2px; border-radius
 .mg-entry__bio { display: block; margin-top: var(--sp-2); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--muted); }
 .mg-entry__count { display: block; margin-top: var(--sp-2); text-align: right; font-size: var(--fs-caption); color: var(--subtle); }
 
+/* --- Index（/professions の文字だけの一覧。名前と名言数を段組みで並べる） --- */
+.mg-index { list-style: none; margin: 0; padding: 0; columns: 10em; column-gap: var(--sp-8); font-size: var(--fs-small); }
+.mg-index li { break-inside: avoid; border-bottom: 1px solid var(--line); }
+.mg-index a { display: flex; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) 0; color: var(--ink); }
+.mg-index a:hover { color: var(--accent); }
+.mg-index__count { flex: none; color: var(--subtle); }
+
 /* --- Like button（3サイズ） --- */
 .mg-like {
   display: inline-flex; align-items: center; gap: var(--sp-2);
